@@ -4,6 +4,14 @@ Windows desktop editor and training helper for 3D Gaussian Splatting workflows.
 
 The project packages a local Electron desktop shell, a browser-based crop/scene editor, COLMAP conversion helpers, and 3DGS training scripts for Windows users.
 
+## License And Intended Use
+
+This repository is published for open-source research, learning, and evaluation use.
+
+Original 3DGS Editor code is MIT licensed. Bundled third-party components keep their original licenses. In particular, `gaussian-splatting/` and related CUDA modules are governed by the Gaussian-Splatting License and are limited to non-commercial research and evaluation use unless separate permission is obtained from the original licensors.
+
+See [LICENSE](LICENSE) and [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) for details.
+
 ## Download
 
 The one-click Windows package is published as a GitHub Release asset:

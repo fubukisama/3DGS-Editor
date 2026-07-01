@@ -1,5 +1,13 @@
 # 3DGS Editor Release / 发行版说明 / リリース案内
 
+## License / 许可证 / ライセンス
+
+This package is intended for open-source research, learning, and evaluation use. Original 3DGS Editor code is MIT licensed, but bundled third-party components keep their original licenses. In particular, the included Gaussian Splatting components are limited to non-commercial research and evaluation use unless separate permission is obtained from the original licensors.
+
+本软件包用于开源研究、学习和评估。3DGS Editor 自有代码采用 MIT 许可证，但内置第三方组件仍遵循各自原许可证。其中包含的 Gaussian Splatting 组件限制为非商业研究和评估用途，除非另行获得原始权利方授权。
+
+このパッケージは、オープンソースの研究、学習、評価用途を想定しています。3DGS Editor 独自コードは MIT ライセンスですが、同梱されている第三者コンポーネントはそれぞれの元ライセンスに従います。特に Gaussian Splatting コンポーネントは、原権利者から別途許可を得ない限り、非商用の研究および評価用途に制限されます。
+
 ## English
 
 ### First Run On A New Windows PC

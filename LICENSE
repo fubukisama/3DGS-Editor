@@ -1,21 +1,54 @@
-Copyright (c) Electron contributors
-Copyright (c) 2013-2020 GitHub Inc.
+3DGS Editor License Notice
+==========================
 
-Permission is hereby granted, free of charge, to any person obtaining
-a copy of this software and associated documentation files (the
-"Software"), to deal in the Software without restriction, including
-without limitation the rights to use, copy, modify, merge, publish,
-distribute, sublicense, and/or sell copies of the Software, and to
-permit persons to whom the Software is furnished to do so, subject to
-the following conditions:
+This repository contains original 3DGS Editor code and bundled third-party
+components. It is published for open-source research, learning, and evaluation
+use.
 
-The above copyright notice and this permission notice shall be
-included in all copies or substantial portions of the Software.
+Original 3DGS Editor Code
+-------------------------
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
-LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
-WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+Unless a file or directory states otherwise, original code written for this
+3DGS Editor project is licensed under the MIT License:
+
+MIT License
+
+Copyright (c) 2026 fubukisama
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of the original 3DGS Editor software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including without
+limitation the rights to use, copy, modify, merge, publish, distribute,
+sublicense, and/or sell copies of the Software, and to permit persons to whom
+the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the original 3DGS Editor Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+Third-Party Components
+----------------------
+
+Third-party code, models, tools, libraries, and assets keep their original
+licenses. The MIT License above does not relicense those components.
+
+Important included components:
+
+- `gaussian-splatting/` and related 3DGS CUDA modules are governed by the
+  Gaussian-Splatting License. They are limited to non-commercial research and
+  evaluation use unless you obtain separate permission from the original
+  licensors.
+- `gaussian-splatting/SIBR_viewers/` is governed by the Apache License 2.0,
+  except for any subdirectories that state a different license.
+- `gaussian-splatting/submodules/fused-ssim/` is governed by the MIT License.
+- Other vendored or downloaded dependencies retain their own licenses.
+
+See `THIRD_PARTY_LICENSES.md` and the license files inside each third-party
+directory for details.
