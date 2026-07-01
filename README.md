@@ -18,7 +18,7 @@ The one-click Windows package is published as a GitHub Release asset:
 
 - [3DGS Editor 0.1.0 Windows x64](https://github.com/fubukisama/3DGS-Editor/releases/tag/v0.1.0)
 - Asset: `3DGS-Editor-0.1.0-win-x64.zip`
-- SHA256: `ABD00460AFC00E65820B389ED65F8ED942B5A99D71F19A47E295AE97D5F52F3C`
+- SHA256: see the `3DGS-Editor-0.1.0-win-x64.zip.sha256` release asset.
 
 The zip is not committed to git because it is larger than GitHub's normal file limit. Use the Release asset for distribution.
 

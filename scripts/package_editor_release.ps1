@@ -78,6 +78,8 @@ if ($IncludeOutputs -and (Test-Path -LiteralPath (Join-Path $Root "output"))) {
 
 Copy-Item -LiteralPath (Join-Path $Root "Setup 3DGS Editor.cmd") -Destination (Join-Path $PackageDir "Setup 3DGS Editor.cmd") -Force
 Copy-Item -LiteralPath (Join-Path $Root "Check 3DGS Editor Environment.cmd") -Destination (Join-Path $PackageDir "Check 3DGS Editor Environment.cmd") -Force
+Copy-Item -LiteralPath (Join-Path $Root "LICENSE") -Destination (Join-Path $PackageDir "LICENSE") -Force -ErrorAction SilentlyContinue
+Copy-Item -LiteralPath (Join-Path $Root "THIRD_PARTY_LICENSES.md") -Destination (Join-Path $PackageDir "THIRD_PARTY_LICENSES.md") -Force -ErrorAction SilentlyContinue
 Copy-Item -LiteralPath (Join-Path $Root "README_RELEASE.md") -Destination (Join-Path $PackageDir "README_RELEASE.md") -Force -ErrorAction SilentlyContinue
 Copy-Item -LiteralPath (Join-Path $Root "README.md") -Destination (Join-Path $PackageDir "README.md") -Force -ErrorAction SilentlyContinue
 
