@@ -1,4 +1,5 @@
 :root {
+  --ui-scale: 1;
   --toolbar-height: 92px;
   --workspace-top: var(--toolbar-height);
   --bg: #0f1115;
@@ -25,6 +26,7 @@ html, body {
 }
 
 #toolbar {
+  zoom: var(--ui-scale);
   min-height: var(--toolbar-height);
   display: grid;
   grid-template-rows: auto auto auto;
@@ -331,6 +333,10 @@ select {
   width: 104px;
 }
 
+#uiScaleSelect {
+  width: 86px;
+}
+
 #pointSize,
 #videoFps {
   width: 58px;
@@ -374,6 +380,7 @@ select {
 #importProgressPanel {
   position: fixed;
   z-index: 5;
+  zoom: var(--ui-scale);
   top: calc(var(--workspace-top) + 12px);
   background: rgba(16, 19, 25, .97);
   border: 1px solid var(--line);
@@ -797,6 +804,7 @@ body.nav-override #three {
 
 #status {
   position: absolute;
+  zoom: var(--ui-scale);
   left: 12px;
   bottom: 12px;
   padding: 8px 10px;
@@ -808,6 +816,7 @@ body.nav-override #three {
 
 #fpsMeter {
   position: absolute;
+  zoom: var(--ui-scale);
   top: 12px;
   right: 12px;
   min-width: 72px;

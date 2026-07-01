@@ -19,3 +19,9 @@ function topLevelDeclarationIndex(source, declaration) {
 test("training UI presets are available during app startup", () => {
   assert.notEqual(topLevelDeclarationIndex(appSource, "const TRAINING_UI_PRESETS"), -1);
 });
+
+test("UI scale controls are available during app startup", () => {
+  assert.notEqual(topLevelDeclarationIndex(appSource, "const UI_SCALE_CHOICES"), -1);
+  assert.match(appSource, /cropEditorUiScale/);
+  assert.match(appSource, /function computeAutoUiScale/);
+});

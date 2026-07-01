@@ -44,6 +44,7 @@ const statusEl = document.getElementById("status");
 const fpsMeterEl = document.getElementById("fpsMeter");
 const sceneSelect = document.getElementById("scene");
 const languageSelect = document.getElementById("languageSelect");
+const uiScaleSelect = document.getElementById("uiScaleSelect");
 const serverPortEl = document.getElementById("serverPort");
 const iterationInput = document.getElementById("iteration");
 const outputInput = document.getElementById("outputScene");
@@ -163,6 +164,7 @@ const I18N = {
     "label.iter": "Iter",
     "label.size": "Size",
     "label.language": "UI",
+    "label.uiScale": "Scale",
     "label.port": "Port",
     "label.brush": "Brush",
     "label.output": "Output",
@@ -304,6 +306,7 @@ const I18N = {
     "option.exhaustive": "Exhaustive",
     "option.sequential": "Sequential",
     "option.noAlignedSource": "No aligned source",
+    "option.uiScaleAuto": "Auto",
     "summary.meshAdvanced": "Mesh Parameters",
     "summary.trainAdvanced": "Training Parameters",
     "panel.inputPreview": "Input Preview",
@@ -334,6 +337,7 @@ const I18N = {
     "label.iter": "迭代",
     "label.size": "大小",
     "label.language": "界面",
+    "label.uiScale": "缩放",
     "label.port": "端口",
     "label.brush": "笔刷",
     "label.output": "输出",
@@ -475,6 +479,7 @@ const I18N = {
     "option.exhaustive": "全量匹配",
     "option.sequential": "顺序匹配",
     "option.noAlignedSource": "无对齐源",
+    "option.uiScaleAuto": "自动",
     "summary.meshAdvanced": "网格参数",
     "summary.trainAdvanced": "训练参数",
     "panel.inputPreview": "输入预览",
@@ -505,6 +510,7 @@ const I18N = {
     "label.iter": "反復",
     "label.size": "サイズ",
     "label.language": "UI",
+    "label.uiScale": "拡大率",
     "label.port": "ポート",
     "label.brush": "ブラシ",
     "label.output": "出力",
@@ -646,6 +652,7 @@ const I18N = {
     "option.exhaustive": "総当たり",
     "option.sequential": "連続照合",
     "option.noAlignedSource": "整列済みデータなし",
+    "option.uiScaleAuto": "自動",
     "summary.meshAdvanced": "メッシュ設定",
     "summary.trainAdvanced": "学習設定",
     "panel.inputPreview": "入力プレビュー",
@@ -705,7 +712,14 @@ const COLMAP_UI_PRESETS = {
   },
 };
 
+const UI_SCALE_STORAGE_KEY = "cropEditorUiScale";
+const UI_SCALE_CHOICES = new Set(["auto", "0.8", "0.9", "1", "1.1", "1.25"]);
+const AUTO_UI_SCALE_MIN = 0.72;
+const AUTO_UI_SCALE_MAX = 1;
+
 let currentLanguage = localStorage.getItem("cropEditorLanguage") || "en";
+let uiScaleMode = normalizeUiScaleMode(localStorage.getItem(UI_SCALE_STORAGE_KEY) || "auto");
+let currentUiScale = 1;
 
 let renderer, scene, camera, controls, pointCloud, splatCloud, cameraGroup, selectionPoints, meshObject, meshSelectionPoints, centerGizmo;
 let focusRaycaster = null;
@@ -963,6 +977,50 @@ function updateMeshTextureToggleLabel() {
   meshTextureLabel.textContent = t(key);
 }
 
+function clampNumber(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function normalizeUiScaleMode(value) {
+  const normalized = String(value || "auto");
+  return UI_SCALE_CHOICES.has(normalized) ? normalized : "auto";
+}
+
+function computeAutoUiScale() {
+  const dpr = Number.isFinite(window.devicePixelRatio) ? Math.max(window.devicePixelRatio, 1) : 1;
+  const width = Number.isFinite(window.innerWidth) ? window.innerWidth : 1600;
+  const height = Number.isFinite(window.innerHeight) ? window.innerHeight : 900;
+  let scale = 1;
+  if (dpr > 1.05) {
+    scale = Math.min(scale, 1 / Math.min(dpr, 1.38));
+  }
+  if (height < 900) scale = Math.min(scale, 0.9);
+  if (height < 760) scale = Math.min(scale, 0.82);
+  if (width < 1300) scale = Math.min(scale, 0.88);
+  return clampNumber(scale, AUTO_UI_SCALE_MIN, AUTO_UI_SCALE_MAX);
+}
+
+function resolveUiScale(mode = uiScaleMode) {
+  if (mode === "auto") return computeAutoUiScale();
+  const parsed = Number(mode);
+  return Number.isFinite(parsed) ? clampNumber(parsed, 0.72, 1.25) : 1;
+}
+
+function applyUiScale(mode = uiScaleMode, options = {}) {
+  const persist = options.persist !== false;
+  const scheduleResize = options.scheduleResize !== false;
+  uiScaleMode = normalizeUiScaleMode(mode);
+  if (uiScaleSelect) uiScaleSelect.value = uiScaleMode;
+  if (persist) localStorage.setItem(UI_SCALE_STORAGE_KEY, uiScaleMode);
+  const nextScale = resolveUiScale(uiScaleMode);
+  if (Math.abs(nextScale - currentUiScale) > 0.005) {
+    currentUiScale = nextScale;
+    document.documentElement.style.setProperty("--ui-scale", currentUiScale.toFixed(3));
+    lastToolbarHeight = 0;
+    if (scheduleResize) requestAnimationFrame(resize);
+  }
+}
+
 function applyLanguage(lang = currentLanguage) {
   currentLanguage = I18N[lang] ? lang : "en";
   document.documentElement.lang = currentLanguage === "zh" ? "zh-CN" : currentLanguage;
@@ -1046,9 +1104,14 @@ function initThree() {
 
 function initUi() {
   updateServerPortDisplay();
+  applyUiScale(uiScaleMode, { persist: false });
   if (languageSelect) {
     languageSelect.value = currentLanguage;
     languageSelect.onchange = () => applyLanguage(languageSelect.value);
+  }
+  if (uiScaleSelect) {
+    uiScaleSelect.value = uiScaleMode;
+    uiScaleSelect.onchange = () => applyUiScale(uiScaleSelect.value);
   }
   if (openJobCenterButton) openJobCenterButton.onclick = showJobCenter;
   for (const tab of document.querySelectorAll(".ribbon-tab")) {
@@ -4209,10 +4272,12 @@ function frameBounds(bounds) {
 }
 
 function resize() {
+  if (uiScaleMode === "auto") applyUiScale("auto", { persist: false, scheduleResize: false });
   syncToolbarHeight();
   if (!renderer || !camera) return;
   const w = canvas.clientWidth;
   const h = canvas.clientHeight;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(w, h, false);
   overlay.width = Math.floor(w * window.devicePixelRatio);
   overlay.height = Math.floor(h * window.devicePixelRatio);
