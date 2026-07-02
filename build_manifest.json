@@ -1,14 +1,14 @@
 {
     "appName":  "3DGS Editor",
-    "sourceVersion":  "36.9.7",
-    "packageVersion":  "0.1.2",
-    "releaseTag":  "v0.1.2",
-    "packageName":  "3DGS-Editor-0.1.2-win-x64.zip",
-    "updatedAt":  "2026-07-02T12:32:03+09:00",
+    "sourceVersion":  "36.9.8",
+    "packageVersion":  "0.1.3",
+    "releaseTag":  "v0.1.3",
+    "packageName":  "3DGS-Editor-0.1.3-win-x64.zip",
+    "updatedAt":  "2026-07-02T12:54:48+09:00",
     "updatedBy":  "Ishida_Lab",
     "machine":  "DESKTOP-UTA4K5M",
     "gitBranch":  "main",
-    "gitCommit":  "54dde96",
+    "gitCommit":  "193edd3",
     "gitDirty":  true,
-    "note":  "Launch editor automatically after successful setup"
+    "note":  "Prefer legacy workspace root for desktop_app packaged shortcuts"
 }

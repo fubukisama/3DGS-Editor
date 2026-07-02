@@ -104,10 +104,15 @@ function setupExitConfirmation() {
 }
 
 function resolveProjectRoot() {
+  const packagedRoot = path.dirname(process.execPath);
+  const legacyWorkspaceRoot = app.isPackaged
+    ? path.resolve(packagedRoot, "..", "..", "..")
+    : "";
   const candidates = [
     process.env.GS_EDITOR_ROOT,
+    legacyWorkspaceRoot,
     path.resolve(__dirname, ".."),
-    path.dirname(process.execPath),
+    packagedRoot,
     path.join(app.getPath("desktop"), "3dgs")
   ].filter(Boolean);
 
