@@ -8,7 +8,10 @@ param(
 
 $ErrorActionPreference = "Stop"
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$DesktopApp = Join-Path $Root "desktop_app"
+$DesktopApp = Join-Path $Root "resources\app"
+if (-not (Test-Path -LiteralPath (Join-Path $DesktopApp "package.json"))) {
+  $DesktopApp = Join-Path $Root "desktop_app"
+}
 $PackageDir = Join-Path $DesktopApp "dist\3DGS Editor-win32-x64"
 $ReleaseRoot = Join-Path $Root "release"
 
@@ -82,6 +85,8 @@ Copy-Item -LiteralPath (Join-Path $Root "LICENSE") -Destination (Join-Path $Pack
 Copy-Item -LiteralPath (Join-Path $Root "THIRD_PARTY_LICENSES.md") -Destination (Join-Path $PackageDir "THIRD_PARTY_LICENSES.md") -Force -ErrorAction SilentlyContinue
 Copy-Item -LiteralPath (Join-Path $Root "README_RELEASE.md") -Destination (Join-Path $PackageDir "README_RELEASE.md") -Force -ErrorAction SilentlyContinue
 Copy-Item -LiteralPath (Join-Path $Root "README.md") -Destination (Join-Path $PackageDir "README.md") -Force -ErrorAction SilentlyContinue
+Copy-Item -LiteralPath (Join-Path $Root "version") -Destination (Join-Path $PackageDir "version") -Force -ErrorAction SilentlyContinue
+Copy-Item -LiteralPath (Join-Path $Root "build_manifest.json") -Destination (Join-Path $PackageDir "build_manifest.json") -Force -ErrorAction SilentlyContinue
 
 New-Item -ItemType Directory -Force -Path $ReleaseRoot | Out-Null
 $zip = Join-Path $ReleaseRoot ("3DGS-Editor-{0}-win-x64.zip" -f $Version)
@@ -89,6 +94,11 @@ if (Test-Path -LiteralPath $zip) {
   Remove-Item -LiteralPath $zip -Force
 }
 Compress-Archive -Path (Join-Path $PackageDir "*") -DestinationPath $zip -Force
+$hash = Get-FileHash -LiteralPath $zip -Algorithm SHA256
+$shaPath = "$zip.sha256"
+("{0}  {1}" -f $hash.Hash.ToLowerInvariant(), (Split-Path -Leaf $zip)) | Set-Content -LiteralPath $shaPath -Encoding ASCII
 
 Write-Host "Release package created:"
 Write-Host $zip
+Write-Host "SHA256:"
+Write-Host $shaPath

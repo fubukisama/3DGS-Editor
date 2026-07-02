@@ -34,6 +34,8 @@ TRAINING_KIT_DIR = ROOT / "training_kit"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 PREVIEW_DIR = Path(__file__).resolve().parent / ".preview"
 JOBS_DIR = Path(__file__).resolve().parent / ".jobs"
+VERSION_FILE = ROOT / "version"
+BUILD_MANIFEST_FILE = ROOT / "build_manifest.json"
 TRAIN_JOBS_DIR = JOBS_DIR / "training"
 SPLAT_JOBS_DIR = JOBS_DIR / "splat"
 C0 = 0.28209479177387814
@@ -87,6 +89,30 @@ def unlink_if_exists(path):
         return True
     except FileNotFoundError:
         return False
+
+
+def read_app_manifest():
+    manifest = {}
+    if BUILD_MANIFEST_FILE.exists():
+        try:
+            manifest = json.loads(BUILD_MANIFEST_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            manifest = {}
+    try:
+        version = VERSION_FILE.read_text(encoding="utf-8").strip()
+    except Exception:
+        version = manifest.get("sourceVersion") or ""
+    package_version = manifest.get("packageVersion") or manifest.get("package_version") or ""
+    return {
+        "source_version": version,
+        "package_version": package_version,
+        "updated_at": manifest.get("updatedAt") or manifest.get("updated_at") or "",
+        "git_commit": manifest.get("gitCommit") or manifest.get("git_commit") or "",
+        "git_branch": manifest.get("gitBranch") or manifest.get("git_branch") or "",
+        "release_tag": manifest.get("releaseTag") or manifest.get("release_tag") or "",
+        "package_name": manifest.get("packageName") or manifest.get("package_name") or "",
+        "note": manifest.get("note") or "",
+    }
 
 
 def form_items(form, key):
@@ -5758,6 +5784,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json({
                     "app": "3DGS Editor",
                     "api_version": 2,
+                    "version": read_app_manifest(),
                     "capabilities": {
                         "job_center": True,
                         "asset_manager": True,

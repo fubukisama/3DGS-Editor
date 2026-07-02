@@ -46,6 +46,7 @@ const sceneSelect = document.getElementById("scene");
 const languageSelect = document.getElementById("languageSelect");
 const uiScaleSelect = document.getElementById("uiScaleSelect");
 const serverPortEl = document.getElementById("serverPort");
+const appVersionEl = document.getElementById("appVersion");
 const iterationInput = document.getElementById("iteration");
 const outputInput = document.getElementById("outputScene");
 const visibleSelectionToggle = document.getElementById("visibleSelection");
@@ -166,6 +167,7 @@ const I18N = {
     "label.language": "UI",
     "label.uiScale": "Scale",
     "label.port": "Port",
+    "label.version": "Version",
     "label.brush": "Brush",
     "label.output": "Output",
     "label.meshMode": "Mode",
@@ -339,6 +341,7 @@ const I18N = {
     "label.language": "界面",
     "label.uiScale": "缩放",
     "label.port": "端口",
+    "label.version": "版本",
     "label.brush": "笔刷",
     "label.output": "输出",
     "label.meshMode": "模式",
@@ -512,6 +515,7 @@ const I18N = {
     "label.language": "UI",
     "label.uiScale": "拡大率",
     "label.port": "ポート",
+    "label.version": "版",
     "label.brush": "ブラシ",
     "label.output": "出力",
     "label.meshMode": "モード",
@@ -962,6 +966,28 @@ function updateServerPortDisplay() {
   serverPortEl.textContent = window.location.port || (window.location.protocol === "https:" ? "443" : "80");
 }
 
+async function updateAppVersionDisplay() {
+  if (!appVersionEl) return;
+  try {
+    const response = await fetch(apiPath("/api/app/health"), { cache: "no-store" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const health = await response.json();
+    const version = health.version || {};
+    const sourceVersion = version.source_version || "";
+    const packageVersion = version.package_version || "";
+    appVersionEl.textContent = sourceVersion || packageVersion || "--";
+    const details = [
+      packageVersion ? `package ${packageVersion}` : "",
+      version.updated_at ? `updated ${version.updated_at}` : "",
+      version.git_commit ? `commit ${version.git_commit}` : ""
+    ].filter(Boolean);
+    appVersionEl.parentElement.title = details.join(" | ") || "Build version";
+  } catch (err) {
+    appVersionEl.textContent = "--";
+    appVersionEl.parentElement.title = `Build version unavailable: ${err.message}`;
+  }
+}
+
 function t(key) {
   return I18N[currentLanguage]?.[key] || I18N.en[key] || key;
 }
@@ -1104,6 +1130,7 @@ function initThree() {
 
 function initUi() {
   updateServerPortDisplay();
+  updateAppVersionDisplay();
   applyUiScale(uiScaleMode, { persist: false });
   if (languageSelect) {
     languageSelect.value = currentLanguage;
