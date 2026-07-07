@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { TrackballControls } from "./vendor/controls/TrackballControls.js?v=20260611_middle_pan_hold";
+import { TrackballControls } from "./vendor/controls/TrackballControls.js?v=20260707_pan_zoom_gate";
 import * as GaussianSplats3D from "gaussian-splats-3d";
 import {
   isEditableShortcutTarget,

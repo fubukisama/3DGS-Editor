@@ -63,6 +63,7 @@ class TrackballControls extends EventDispatcher {
 
 		let _state = STATE.NONE,
 			_keyState = STATE.NONE,
+			_wheelZoomPending = false,
 
 			_touchZoomDistanceStart = 0,
 			_touchZoomDistanceEnd = 0,
@@ -143,6 +144,7 @@ class TrackballControls extends EventDispatcher {
 		function resetZoomDelta() {
 
 			_zoomStart.copy( _zoomEnd );
+			_wheelZoomPending = false;
 
 		}
 
@@ -350,9 +352,13 @@ class TrackballControls extends EventDispatcher {
 
 			}
 
-			if ( ! scope.noZoom ) {
+			const activeState = ( _keyState !== STATE.NONE ) ? _keyState : _state;
+			const shouldZoom = activeState === STATE.ZOOM || activeState === STATE.TOUCH_ZOOM_PAN || _wheelZoomPending;
+
+			if ( ! scope.noZoom && shouldZoom ) {
 
 				scope.zoomCamera();
+				_wheelZoomPending = ! scope.staticMoving && Math.abs( _zoomEnd.y - _zoomStart.y ) > EPS;
 
 			}
 
@@ -623,6 +629,8 @@ class TrackballControls extends EventDispatcher {
 
 			if ( scope.noZoom === true ) return;
 
+			if ( _state !== STATE.NONE || event.buttons ) return;
+
 			event.preventDefault();
 
 			switch ( event.deltaMode ) {
@@ -643,6 +651,8 @@ class TrackballControls extends EventDispatcher {
 					break;
 
 			}
+
+			_wheelZoomPending = true;
 
 			scope.dispatchEvent( _startEvent );
 			scope.dispatchEvent( _endEvent );
