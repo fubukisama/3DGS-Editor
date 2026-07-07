@@ -38,6 +38,24 @@ function Copy-TreeFiltered($Source, $Destination, [string[]]$ExcludeNames = @())
   }
 }
 
+function Get-Sha256Hex($Path) {
+  if (Get-Command Get-FileHash -ErrorAction SilentlyContinue) {
+    return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+  }
+  $stream = [System.IO.File]::OpenRead($Path)
+  try {
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+      $bytes = $sha.ComputeHash($stream)
+      return (($bytes | ForEach-Object { $_.ToString("x2") }) -join "")
+    } finally {
+      $sha.Dispose()
+    }
+  } finally {
+    $stream.Dispose()
+  }
+}
+
 if (-not $SkipElectronPackage) {
   Push-Location $DesktopApp
   try {
@@ -94,9 +112,9 @@ if (Test-Path -LiteralPath $zip) {
   Remove-Item -LiteralPath $zip -Force
 }
 Compress-Archive -Path (Join-Path $PackageDir "*") -DestinationPath $zip -Force
-$hash = Get-FileHash -LiteralPath $zip -Algorithm SHA256
+$hash = Get-Sha256Hex $zip
 $shaPath = "$zip.sha256"
-("{0}  {1}" -f $hash.Hash.ToLowerInvariant(), (Split-Path -Leaf $zip)) | Set-Content -LiteralPath $shaPath -Encoding ASCII
+("{0}  {1}" -f $hash, (Split-Path -Leaf $zip)) | Set-Content -LiteralPath $shaPath -Encoding ASCII
 
 Write-Host "Release package created:"
 Write-Host $zip
