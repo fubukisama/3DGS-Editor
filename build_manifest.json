@@ -1,14 +1,14 @@
 {
     "appName":  "3DGS Editor",
-    "sourceVersion":  "36.9.14",
-    "packageVersion":  "0.1.6",
-    "releaseTag":  "v0.1.6",
-    "packageName":  "3DGS-Editor-0.1.6-win-x64.zip",
-    "updatedAt":  "2026-07-07T15:24:31+09:00",
+    "sourceVersion":  "36.9.15",
+    "packageVersion":  "0.1.7",
+    "releaseTag":  "v0.1.7",
+    "packageName":  "3DGS-Editor-0.1.7-win-x64.zip",
+    "updatedAt":  "2026-07-07T15:40:45+09:00",
     "updatedBy":  "Ishida_Lab",
     "machine":  "DESKTOP-UTA4K5M",
     "gitBranch":  "main",
     "gitCommit":  "pending",
     "gitDirty":  true,
-    "note":  "Fix right-button pan so vertical movement no longer reuses stale zoom input"
+    "note":  "Restore wheel zoom and clear stale zoom deltas when pan starts"
 }

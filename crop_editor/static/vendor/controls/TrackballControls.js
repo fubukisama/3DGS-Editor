@@ -83,9 +83,7 @@ class TrackballControls extends EventDispatcher {
 			_panEnd = new Vector2(),
 
 			_pointers = [],
-			_pointerPositions = {},
-
-			_zoomPending = false;
+			_pointerPositions = {};
 
 		// for reset
 
@@ -141,6 +139,12 @@ class TrackballControls extends EventDispatcher {
 			};
 
 		}() );
+
+		function resetZoomDelta() {
+
+			_zoomStart.copy( _zoomEnd );
+
+		}
 
 		this.rotateCamera = ( function () {
 
@@ -198,10 +202,6 @@ class TrackballControls extends EventDispatcher {
 
 
 		this.zoomCamera = function () {
-
-			const state = ( _keyState !== STATE.NONE ) ? _keyState : _state;
-			const isZoomGesture = state === STATE.ZOOM || state === STATE.TOUCH_ZOOM_PAN;
-			if ( ! isZoomGesture && ! _zoomPending ) return;
 
 			let factor;
 
@@ -261,17 +261,10 @@ class TrackballControls extends EventDispatcher {
 				if ( scope.staticMoving ) {
 
 					_zoomStart.copy( _zoomEnd );
-					_zoomPending = false;
 
 				} else {
 
 					_zoomStart.y += ( _zoomEnd.y - _zoomStart.y ) * this.dynamicDampingFactor;
-					if ( Math.abs( _zoomEnd.y - _zoomStart.y ) < EPS ) {
-
-						_zoomStart.copy( _zoomEnd );
-						_zoomPending = false;
-
-					}
 
 				}
 
@@ -410,7 +403,6 @@ class TrackballControls extends EventDispatcher {
 
 			_state = STATE.NONE;
 			_keyState = STATE.NONE;
-			_zoomPending = false;
 
 			scope.target.copy( scope.target0 );
 			scope.object.position.copy( scope.position0 );
@@ -575,6 +567,7 @@ class TrackballControls extends EventDispatcher {
 
 			if ( state === STATE.ROTATE && ! scope.noRotate ) {
 
+				resetZoomDelta();
 				_moveCurr.copy( getMouseOnCircle( event.pageX, event.pageY ) );
 				_movePrev.copy( _moveCurr );
 
@@ -585,6 +578,7 @@ class TrackballControls extends EventDispatcher {
 
 			} else if ( state === STATE.PAN && ! scope.noPan ) {
 
+				resetZoomDelta();
 				_panStart.copy( getMouseOnScreen( event.pageX, event.pageY ) );
 				_panEnd.copy( _panStart );
 
@@ -606,7 +600,6 @@ class TrackballControls extends EventDispatcher {
 			} else if ( state === STATE.ZOOM && ! scope.noZoom ) {
 
 				_zoomEnd.copy( getMouseOnScreen( event.pageX, event.pageY ) );
-				_zoomPending = true;
 
 			} else if ( state === STATE.PAN && ! scope.noPan ) {
 
@@ -637,19 +630,16 @@ class TrackballControls extends EventDispatcher {
 				case 2:
 					// Zoom in pages
 					_zoomStart.y -= event.deltaY * 0.025;
-					_zoomPending = true;
 					break;
 
 				case 1:
 					// Zoom in lines
 					_zoomStart.y -= event.deltaY * 0.01;
-					_zoomPending = true;
 					break;
 
 				default:
 					// undefined, 0, assume pixels
 					_zoomStart.y -= event.deltaY * 0.00025;
-					_zoomPending = true;
 					break;
 
 			}
