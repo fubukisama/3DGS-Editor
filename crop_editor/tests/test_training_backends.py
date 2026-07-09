@@ -751,7 +751,21 @@ class TrainingBackendTests(unittest.TestCase):
         self.assertEqual(options["iterations"], 30000)
         self.assertEqual(options["resolution"], 4)
         self.assertEqual(options["depth_ratio"], 0.0)
+        self.assertEqual(options["densify_until_iter"], 10000)
+        self.assertEqual(options["densification_interval"], 150)
+        self.assertGreater(options["densify_grad_threshold"], 0.0002)
         self.assertNotIn("antialiasing", options)
+
+    def test_2dgs_training_command_saves_milestones_and_caps_densification(self):
+        options = server.training_options_from_payload("2dgs", "max_quality", {})
+
+        command = server.training_command("2dgs", "dataset", "output", options)
+
+        self.assertEqual(command[command.index("--save_iterations") + 1:command.index("--checkpoint_iterations")], ["7000", "15000", "30000"])
+        self.assertEqual(command[command.index("--checkpoint_iterations") + 1:command.index("--depth_ratio")], ["7000", "15000", "30000"])
+        self.assertIn("--densify_grad_threshold", command)
+        self.assertEqual(command[command.index("--densify_until_iter") + 1], "10000")
+        self.assertEqual(command[command.index("--densification_interval") + 1], "200")
 
     def test_3dgs_max_quality_profile_enables_quality_oriented_training(self):
         options = server.train_args_for_quality("max_quality", "3dgs")

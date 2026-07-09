@@ -4251,13 +4251,41 @@ def train_args_for_quality(quality, backend="3dgs"):
     quality = quality or "quick"
     if backend == "2dgs":
         if quality == "quick":
-            return {"iterations": 7000, "resolution": 8, "depth_ratio": 0.0}
+            return {
+                "iterations": 7000,
+                "resolution": 8,
+                "depth_ratio": 0.0,
+                "densify_grad_threshold": 0.00025,
+                "densification_interval": 100,
+                "densify_until_iter": 5000,
+            }
         if quality == "full":
-            return {"iterations": 30000, "resolution": 8, "depth_ratio": 0.0}
+            return {
+                "iterations": 30000,
+                "resolution": 8,
+                "depth_ratio": 0.0,
+                "densify_grad_threshold": 0.00025,
+                "densification_interval": 120,
+                "densify_until_iter": 9000,
+            }
         if quality == "quality":
-            return {"iterations": 30000, "resolution": 4, "depth_ratio": 0.0}
+            return {
+                "iterations": 30000,
+                "resolution": 4,
+                "depth_ratio": 0.0,
+                "densify_grad_threshold": 0.0003,
+                "densification_interval": 150,
+                "densify_until_iter": 10000,
+            }
         if quality == "max_quality":
-            return {"iterations": 30000, "resolution": 2, "depth_ratio": 0.0}
+            return {
+                "iterations": 30000,
+                "resolution": 2,
+                "depth_ratio": 0.0,
+                "densify_grad_threshold": 0.00035,
+                "densification_interval": 200,
+                "densify_until_iter": 10000,
+            }
     else:
         if quality == "quick":
             return {
@@ -4314,6 +4342,24 @@ def training_options_from_payload(backend, quality, payload=None):
     options["resolution"] = safe_int_range(payload.get("resolution"), options["resolution"], 1, 16)
     if backend == "2dgs":
         options["depth_ratio"] = safe_float_range(payload.get("depth_ratio"), options["depth_ratio"], 0.0, 1.0)
+        options["densify_grad_threshold"] = safe_float_range(
+            payload.get("densify_grad_threshold"),
+            options["densify_grad_threshold"],
+            0.00001,
+            0.01,
+        )
+        options["densification_interval"] = safe_int_range(
+            payload.get("densification_interval"),
+            options["densification_interval"],
+            10,
+            1000,
+        )
+        options["densify_until_iter"] = safe_int_range(
+            payload.get("densify_until_iter"),
+            min(options["densify_until_iter"], options["iterations"]),
+            0,
+            options["iterations"],
+        )
         return options
 
     optimizer_type = str(payload.get("optimizer_type", options["optimizer_type"]))
@@ -4339,6 +4385,15 @@ def training_options_from_payload(backend, quality, payload=None):
         options["iterations"],
     )
     return options
+
+
+def training_milestone_iterations(iterations):
+    iterations = max(1, int(iterations))
+    milestones = [iterations]
+    for marker in (7000, 15000):
+        if marker < iterations:
+            milestones.append(marker)
+    return sorted(set(milestones))
 
 
 def write_training_metadata(output, backend, quality=None, options=None):
@@ -4370,8 +4425,9 @@ def write_training_metadata(output, backend, quality=None, options=None):
 def training_command(backend, dataset, output, options):
     backend = safe_training_backend(backend)
     iterations = options["iterations"]
+    save_iterations = [str(value) for value in training_milestone_iterations(iterations)]
     if backend == "2dgs":
-        return [
+        command = [
             training_python("2dgs"),
             "train.py",
             "-s",
@@ -4385,14 +4441,18 @@ def training_command(backend, dataset, output, options):
             "--iterations",
             str(iterations),
             "--test_iterations",
-            str(iterations),
+            *save_iterations,
             "--save_iterations",
-            str(iterations),
+            *save_iterations,
             "--checkpoint_iterations",
-            str(iterations),
+            *save_iterations,
             "--depth_ratio",
             str(options["depth_ratio"]),
         ]
+        command.extend(["--densify_grad_threshold", f"{options['densify_grad_threshold']:.12g}"])
+        command.extend(["--densification_interval", str(options["densification_interval"])])
+        command.extend(["--densify_until_iter", str(options["densify_until_iter"])])
+        return command
 
     command = [
         training_python("3dgs"),
@@ -4490,6 +4550,22 @@ def run_training_job(job, run_convert, quality, overwrite):
                 f"densify_interval={options['densification_interval']}, "
                 f"densify_grad={options['densify_grad_threshold']:.12g}",
             )
+        else:
+            add_job_log(
+                job,
+                "2DGS quality guard: "
+                f"depth_ratio={options['depth_ratio']}, "
+                f"densify_until={options['densify_until_iter']}, "
+                f"densify_interval={options['densification_interval']}, "
+                f"densify_grad={options['densify_grad_threshold']:.12g}",
+            )
+            if options["resolution"] <= 2:
+                add_job_log(
+                    job,
+                    "WARNING: 2DGS r2/max-quality is VRAM-heavy. On 4GB GPUs, "
+                    "the guard caps densification and saves 7000/15000/final checkpoints "
+                    "so long jobs remain recoverable.",
+                )
         command = training_command(backend, dataset, output, options)
         set_job_stage(job, "running", "train")
         run_logged(job, command, TWO_DGS_DIR if backend == "2dgs" else GAUSSIAN_DIR, backend)
