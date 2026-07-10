@@ -1,14 +1,14 @@
 {
-    "appName":  "3DGS Editor",
-    "sourceVersion":  "36.9.20",
-    "packageVersion":  "0.1.12",
-    "releaseTag":  "v0.1.12",
-    "packageName":  "3DGS-Editor-0.1.12-win-x64.zip",
-    "updatedAt":  "2026-07-09T16:10:20+09:00",
-    "updatedBy":  "Ishida_Lab",
-    "machine":  "DESKTOP-UTA4K5M",
-    "gitBranch":  "main",
-    "gitCommit":  "08a644c",
+    "appName":  "Gaussian Scene Workbench",
+    "sourceVersion":  "36.10.0",
+    "packageVersion":  "0.2.0",
+    "releaseTag":  "v0.2.0",
+    "packageName":  "Gaussian-Scene-Workbench-0.2.0-win-x64.zip",
+    "updatedAt":  "2026-07-10T19:16:16+09:00",
+    "updatedBy":  "ztx",
+    "machine":  "LAPTOP-QS64PJGJ",
+    "gitBranch":  "agent/rename-gaussian-scene-workbench",
+    "gitCommit":  "249c6d5",
     "gitDirty":  true,
-    "note":  "Experiment Manager upgrades, real GPU picking, resizable panels, and clone workflow fixes"
+    "note":  "Rename product to Gaussian Scene Workbench and refresh release documentation"
 }

@@ -167,7 +167,7 @@ const AXIS_GIZMO_AXES = [
 const CENTER_GIZMO_SCREEN_RADIUS_PX = 92;
 const I18N = {
   en: {
-    "app.subtitle": "Gaussian model workspace",
+    "app.subtitle": "Gaussian scene research toolkit",
     "section.scene": "Scene",
     "section.view": "View",
     "section.language": "Language",
@@ -353,7 +353,7 @@ const I18N = {
     "status.noModels": "No trained models found under output/."
   },
   zh: {
-    "app.subtitle": "高斯模型工作台",
+    "app.subtitle": "高斯场景研究工具链",
     "section.scene": "场景",
     "section.view": "视图",
     "section.language": "语言",
@@ -539,7 +539,7 @@ const I18N = {
     "status.noModels": "output/ 下没有找到训练模型。"
   },
   ja: {
-    "app.subtitle": "ガウスモデル作業環境",
+    "app.subtitle": "ガウスシーン研究ツール",
     "section.scene": "シーン",
     "section.view": "表示",
     "section.language": "言語",

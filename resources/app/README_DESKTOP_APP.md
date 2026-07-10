@@ -1,6 +1,6 @@
-# 3DGS Editor Desktop
+# Gaussian Scene Workbench Desktop
 
-Electron desktop wrapper for the local 3DGS Crop Editor.
+Electron desktop application for the local Gaussian scene research workbench.
 
 ## Start In Development
 
@@ -40,5 +40,5 @@ npm run package:win
 Output:
 
 ```text
-desktop_app\dist\3DGS Editor-win32-x64\3DGS Editor.exe
+resources\app\dist\Gaussian Scene Workbench-win32-x64\Gaussian Scene Workbench.exe
 ```

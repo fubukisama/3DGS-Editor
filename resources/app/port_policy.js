@@ -33,7 +33,7 @@ async function assertPortAvailable(port, { isPackaged = false, host = "127.0.0.1
   const mode = isPackaged ? "desktop app" : "development app";
   const otherMode = isPackaged
     ? `If npm start is running, close it or run it on ${DEVELOPMENT_PORT}.`
-    : `If the packaged 3DGS Editor is running, close it or use GS_EDITOR_PORT to choose another development port.`;
+    : `If the packaged Gaussian Scene Workbench is running, close it or use GS_EDITOR_PORT to choose another development port.`;
   throw new Error(
     `The ${mode} requires fixed port ${port}, but that port is already in use. ` +
     `${otherMode} The app no longer switches to 7861 silently.`

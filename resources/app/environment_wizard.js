@@ -10,7 +10,9 @@ function exists(filePath) {
 }
 
 function defaultSetupPath(root) {
-  return path.join(root || "", "Setup 3DGS Editor.cmd");
+  const current = path.join(root || "", "Setup Gaussian Scene Workbench.cmd");
+  const legacy = path.join(root || "", "Setup 3DGS Editor.cmd");
+  return exists(current) ? current : legacy;
 }
 
 function defaultReadmePath(root) {
@@ -114,7 +116,7 @@ async function showEnvironmentWizard({ dialog, shell, root, startupError, log, e
     if (item && !report.warnings.includes(item)) report.warnings.push(item);
   }
   const detail = [
-    "The editor UI is installed, but the local 3DGS runtime is not ready.",
+    "The workbench UI is installed, but the local Gaussian Splatting runtime is not ready.",
     "",
     "Missing:",
     ...(report.missing.length ? report.missing.map((item) => `- ${item}`) : ["- No required item detected as missing."]),
@@ -129,8 +131,8 @@ async function showEnvironmentWizard({ dialog, shell, root, startupError, log, e
   const buttons = ["Run Setup", "Open Guide", "Open Folder", "Quit"];
   const choice = await dialog.showMessageBox({
     type: "warning",
-    title: "3DGS Editor environment setup",
-    message: "3DGS Editor needs a local runtime before it can start.",
+    title: "Gaussian Scene Workbench environment setup",
+    message: "Gaussian Scene Workbench needs a local runtime before it can start.",
     detail,
     buttons,
     defaultId: 0,

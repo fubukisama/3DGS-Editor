@@ -1,12 +1,12 @@
 {
-  "name": "3dgs-editor-desktop",
-  "version": "0.1.12",
-  "description": "Desktop wrapper for the local 3DGS Crop Editor",
+  "name": "gaussian-scene-workbench-desktop",
+  "version": "0.2.0",
+  "description": "Desktop research workbench for Gaussian scene reconstruction, analysis, and editing",
   "main": "main.js",
   "private": true,
   "scripts": {
     "start": "electron .",
-    "package:win": "electron-packager . \"3DGS Editor\" --platform=win32 --arch=x64 --overwrite --out=dist",
+    "package:win": "electron-packager . \"Gaussian Scene Workbench\" --platform=win32 --arch=x64 --overwrite --out=dist",
     "release:win": "powershell -ExecutionPolicy Bypass -File ..\\..\\scripts\\package_editor_release.ps1"
   },
   "devDependencies": {

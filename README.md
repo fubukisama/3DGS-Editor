@@ -1,237 +1,157 @@
-# 3DGS Editor
+# Gaussian Scene Workbench
 
-**Language / 语言 / 言語:** [English](#english) | [中文](#中文) | [日本語](#日本語)
+**Gaussian Scene Workbench** is a Windows desktop research environment for Gaussian scene reconstruction, experiment management, analysis, editing, rendering, and export. It supports workflows beyond 3DGS training while retaining compatibility with existing 3DGS Editor projects and runtime settings.
 
----
+中文名：**高斯场景研究工作台**
+日本語名：**ガウスシーン研究ワークベンチ**
 
-## English
+## Capabilities
 
-Windows desktop editor and training helper for 3D Gaussian Splatting workflows.
+- Prepare image and video datasets with COLMAP-assisted reconstruction tools.
+- Train and manage Gaussian Splatting methods, including 3DGS and 2DGS workflows.
+- Resume checkpoints, clone experiments, compare parameters, inspect curves, and review job history.
+- Load large Gaussian scenes, inspect cameras, select visible Gaussians on the GPU, crop, and edit scene content.
+- Run rendering and PSNR analysis, manage assets, and export splat, GLB, and mesh results.
+- Use resizable persistent panels and adaptive UI scaling on high-DPI displays.
 
-The project packages a local Electron desktop shell, a browser-based crop/scene editor, COLMAP conversion helpers, and 3DGS training scripts for Windows users.
+## License And Intended Use
 
-### License And Intended Use
+This repository is intended for open-source research, learning, and evaluation. Original Gaussian Scene Workbench code is MIT licensed. Bundled third-party components keep their original licenses. In particular, `gaussian-splatting/` and related CUDA modules are governed by the Gaussian-Splatting License and are limited to non-commercial research and evaluation unless separate permission is obtained from the original licensors.
 
-This repository is published for open-source research, learning, and evaluation use.
+See [LICENSE](LICENSE) and [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 
-Original 3DGS Editor code is MIT licensed. Bundled third-party components keep their original licenses. In particular, `gaussian-splatting/` and related CUDA modules are governed by the Gaussian-Splatting License and are limited to non-commercial research and evaluation use unless separate permission is obtained from the original licensors.
+## Windows Download
 
-See [LICENSE](LICENSE) and [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) for details.
+- [Gaussian Scene Workbench 0.2.0 Windows x64](https://github.com/fubukisama/3DGS-Editor/releases/tag/v0.2.0)
+- Package: `Gaussian-Scene-Workbench-0.2.0-win-x64.zip`
+- Verify the package with the matching `.sha256` Release asset.
 
-### Download
+The large Windows package is distributed through GitHub Releases rather than committed to git.
 
-The one-click Windows package is published as a GitHub Release asset:
+## Quick Start
 
-- [3DGS Editor 0.1.4 Windows x64](https://github.com/fubukisama/3DGS-Editor/releases/tag/v0.1.4)
-- Asset: `3DGS-Editor-0.1.4-win-x64.zip`
-- SHA256: see the `3DGS-Editor-0.1.4-win-x64.zip.sha256` release asset.
+1. Download and extract `Gaussian-Scene-Workbench-0.2.0-win-x64.zip` to a writable folder, preferably outside the system drive.
+2. Double-click `Setup Gaussian Scene Workbench.cmd` and choose a runtime folder. Press Enter to use the same-drive default, such as `E:\Gaussian-Scene-Workbench-Runtime`.
+3. Setup launches the application when it finishes. Later, start it with `Gaussian Scene Workbench.exe`.
 
-The zip is not committed to git because it is larger than GitHub's normal file limit. Use the Release asset for distribution.
-
-### Quick Start
-
-1. Download and extract `3DGS-Editor-0.1.4-win-x64.zip`.
-2. Double-click `Setup 3DGS Editor.cmd` and choose a runtime install folder. Press Enter to use the default on the same drive as the package, for example `E:\3DGS-Editor-Runtime`.
-3. Setup launches the editor when it finishes. Later, double-click `3DGS Editor.exe` to start it again.
-
-To verify the environment without installing anything, run:
+To inspect the environment without installing components:
 
 ```powershell
-.\Check 3DGS Editor Environment.cmd
+.\Check Gaussian Scene Workbench Environment.cmd
 ```
 
-See [README_RELEASE.md](README_RELEASE.md) for English, Chinese, and Japanese release instructions.
+Existing `GS_EDITOR_*` environment variables, `gaussian_splatting` Conda environments, and legacy `3DGS-Editor-Runtime` installations remain supported.
 
-### Repository Layout
+## Repository Layout
 
-- `crop_editor/` - local web editor and Python server.
-- `resources/app/` - Electron desktop wrapper source.
-- `scripts/` - setup, packaging, environment repair, and utility scripts.
-- `training_kit/` - Windows batch helpers for conversion and training.
-- `gaussian-splatting/` - bundled 3DGS training source and CUDA extension sources.
+- `crop_editor/` - local web workbench and Python service.
+- `resources/app/` - Electron desktop application.
+- `scripts/` - setup, packaging, environment repair, and utilities.
+- `training_kit/` - Windows conversion and training helpers.
+- `gaussian-splatting/` - bundled training and CUDA extension sources.
 
-Generated runtime folders such as `node_modules`, `datasets`, `output`, `desktop_app`, COLMAP downloads, and packaged Electron binaries are intentionally excluded from git.
+Generated folders such as `node_modules`, `datasets`, `output`, `desktop_app`, downloaded COLMAP tools, and packaged Electron binaries are excluded from git.
 
-### Build A Release Package
-
-From a prepared Windows workspace:
+## Build A Release
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\update_version.ps1 -Note "Describe this change"
+powershell -ExecutionPolicy Bypass -File scripts\update_version.ps1 -Version 36.10.0 -PackageVersion 0.2.0 -Bump none -Note "Gaussian Scene Workbench rebrand"
 powershell -ExecutionPolicy Bypass -File scripts\package_editor_release.ps1
 ```
 
-The generated zip is intended to be uploaded to GitHub Releases.
+The generated package is written to `release\Gaussian-Scene-Workbench-<version>-win-x64.zip`.
 
-### Version And Multi-Device Workflow
+## Capture Guidance
 
-Before every code or package update, pull the latest remote state and update the version manifest:
-
-```powershell
-git pull --ff-only
-powershell -ExecutionPolicy Bypass -File scripts\update_version.ps1 -Note "Describe this change"
-```
-
-This updates `version`, `resources/app/package.json`, and `build_manifest.json` with the source version, package version, update time, machine, branch, and commit. The desktop UI also shows the running version next to the server port, so it is clear which build is open on each device.
-
-### Notes For Capture Data
-
-COLMAP and 3DGS require real camera motion and parallax. Near-duplicate photos from the same viewpoint can match many features but still fail with `No good initial image pair found` because no sparse 3D reconstruction can be initialized.
-
-For small objects or museum exhibits, capture at least 50-100 images while moving around the object with strong overlap. Avoid standing in one place and only rotating the camera.
+COLMAP and Gaussian Splatting reconstruction require real camera motion and parallax. For small objects or exhibits, capture at least 50-100 overlapping images while moving around the subject. Rotating the camera from one fixed position often prevents sparse reconstruction initialization.
 
 ---
 
 ## 中文
 
-3DGS Editor 是面向 Windows 的 3D Gaussian Splatting 桌面编辑器和训练辅助工具。
+**Gaussian Scene Workbench（高斯场景研究工作台）** 是面向 Windows 的高斯场景研究环境，覆盖数据处理、场景重建、训练实验管理、分析评估、可视化编辑、渲染与导出，不再局限于单一的 3DGS 训练或裁剪功能。
 
-本项目打包了本地 Electron 桌面外壳、浏览器式裁剪/场景编辑器、COLMAP 转换辅助工具，以及适合 Windows 用户使用的 3DGS 训练脚本。
+### 主要功能
 
-### 许可证和用途
+- 使用图像或视频准备数据集，并辅助完成 COLMAP 重建。
+- 管理 3DGS、2DGS 等 Gaussian Splatting 训练流程。
+- 恢复检查点、克隆实验、对比参数、查看训练曲线和任务历史。
+- 加载大型高斯场景，查看相机，使用 GPU 选择可见高斯并进行裁剪与编辑。
+- 执行渲染、PSNR 分析、资产管理以及 splat、GLB、网格导出。
+- 支持可调整并持久化的面板和高 DPI 自适应界面缩放。
 
-本仓库用于开源研究、学习和评估用途。
+### 许可证与用途
 
-3DGS Editor 的原创代码采用 MIT 许可证。内置第三方组件仍遵循各自原许可证。特别是 `gaussian-splatting/` 及相关 CUDA 模块受 Gaussian-Splatting License 约束，除非另行获得原始权利方授权，否则仅限非商业研究和评估用途。
+本仓库用于开源研究、学习和评估。Gaussian Scene Workbench 的原创代码采用 MIT 许可证，内置第三方组件仍遵循各自原许可证。特别是 `gaussian-splatting/` 及相关 CUDA 模块受 Gaussian-Splatting License 约束，除非另行获得原始权利方授权，否则仅限非商业研究和评估用途。
 
-详情请看 [LICENSE](LICENSE) 和 [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)。
+详情见 [LICENSE](LICENSE) 和 [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)。
 
-### 下载
+### Windows 下载
 
-一键 Windows 安装包发布在 GitHub Release：
-
-- [3DGS Editor 0.1.4 Windows x64](https://github.com/fubukisama/3DGS-Editor/releases/tag/v0.1.4)
-- 文件：`3DGS-Editor-0.1.4-win-x64.zip`
-- SHA256：见 Release 里的 `3DGS-Editor-0.1.4-win-x64.zip.sha256`
-
-zip 安装包没有提交进 git，因为它超过 GitHub 常规文件大小限制。请从 Release 下载发行包。
+- [Gaussian Scene Workbench 0.2.0 Windows x64](https://github.com/fubukisama/3DGS-Editor/releases/tag/v0.2.0)
+- 安装包：`Gaussian-Scene-Workbench-0.2.0-win-x64.zip`
+- 使用 Release 中对应的 `.sha256` 文件校验安装包。
 
 ### 快速开始
 
-1. 下载并解压 `3DGS-Editor-0.1.4-win-x64.zip`。
-2. 双击 `Setup 3DGS Editor.cmd`，选择运行时安装目录。直接回车会使用与安装包同盘的默认目录，例如 `E:\3DGS-Editor-Runtime`。
-3. 安装完成后会自动启动编辑器。以后再次使用时，双击 `3DGS Editor.exe`。
+1. 下载并解压安装包到普通可写目录，建议放在非系统盘。
+2. 双击 `Setup Gaussian Scene Workbench.cmd` 并选择运行时目录。直接回车会使用同盘默认目录，例如 `E:\Gaussian-Scene-Workbench-Runtime`。
+3. 安装完成后软件会自动启动。以后双击 `Gaussian Scene Workbench.exe` 即可运行。
 
-如果只想检查环境、不安装任何东西，可以运行：
+只检查环境、不安装组件时运行：
 
 ```powershell
-.\Check 3DGS Editor Environment.cmd
+.\Check Gaussian Scene Workbench Environment.cmd
 ```
 
-中英日三语发行说明见 [README_RELEASE.md](README_RELEASE.md)。
+已有的 `GS_EDITOR_*` 环境变量、`gaussian_splatting` Conda 环境和旧版 `3DGS-Editor-Runtime` 仍然兼容。
 
-### 仓库结构
+### 源码结构与打包
 
-- `crop_editor/` - 本地网页编辑器和 Python 服务。
-- `resources/app/` - Electron 桌面外壳源码。
-- `scripts/` - 安装、打包、环境修复和工具脚本。
-- `training_kit/` - Windows 下的转换和训练批处理辅助工具。
-- `gaussian-splatting/` - 内置 3DGS 训练源码和 CUDA 扩展源码。
+`crop_editor/` 是网页工作台和 Python 服务，`resources/app/` 是 Electron 桌面应用，`scripts/` 与 `training_kit/` 提供环境安装、打包、数据转换和训练辅助工具。
 
-`node_modules`、`datasets`、`output`、`desktop_app`、COLMAP 下载目录和已打包的 Electron 二进制文件等运行时生成目录不会提交进 git。
-
-### 构建发行包
-
-在准备好的 Windows 工作区中运行：
+生成发行包：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\update_version.ps1 -Note "说明本次修改"
 powershell -ExecutionPolicy Bypass -File scripts\package_editor_release.ps1
 ```
 
-生成的 zip 用于上传到 GitHub Releases。
-
-### 版本和多设备协作流程
-
-每次修改代码或重新封装安装包前，先拉取远端最新状态，再更新版本记录：
-
-```powershell
-git pull --ff-only
-powershell -ExecutionPolicy Bypass -File scripts\update_version.ps1 -Note "说明本次修改"
-```
-
-这个脚本会同步更新 `version`、`resources/app/package.json` 和 `build_manifest.json`，记录源码版本、安装包版本、更新时间、机器名、分支和提交号。桌面 UI 会在端口旁显示当前运行版本，方便多台设备之间确认到底打开的是哪个构建。
-
-### 拍摄数据注意事项
-
-COLMAP 和 3DGS 需要真实的相机移动和视差。如果照片几乎都来自同一位置，即使能匹配到很多特征，也可能因为无法初始化稀疏三维重建而报 `No good initial image pair found`。
-
-拍摄小物体或展品时，建议围绕目标移动拍摄至少 50-100 张，并保持较高重叠率。不要站在原地只旋转相机。
+生成文件位于 `release\Gaussian-Scene-Workbench-<version>-win-x64.zip`。
 
 ---
 
 ## 日本語
 
-3DGS Editor は、Windows 向けの 3D Gaussian Splatting デスクトップエディタ兼トレーニング補助ツールです。
+**Gaussian Scene Workbench（ガウスシーン研究ワークベンチ）** は、Windows 向けの Gaussian Splatting 研究環境です。データ準備、シーン再構成、学習実験管理、解析、編集、レンダリング、エクスポートを一つのデスクトップアプリで扱います。
 
-このプロジェクトには、ローカル Electron デスクトップシェル、ブラウザベースのクロップ/シーンエディタ、COLMAP 変換ヘルパー、Windows ユーザー向けの 3DGS トレーニングスクリプトが含まれています。
+### 主な機能
 
-### ライセンスと利用目的
+- 画像・動画データセットの準備と COLMAP 再構成支援。
+- 3DGS、2DGS を含む Gaussian Splatting 学習ワークフロー。
+- チェックポイント再開、実験の複製、パラメータ比較、学習曲線、ジョブ履歴。
+- GPU による可視 Gaussian 選択、クロップ、シーン編集、カメラ確認。
+- レンダリング、PSNR 解析、アセット管理、splat・GLB・メッシュ出力。
+- 高 DPI 対応 UI スケーリングと、サイズ・位置を保持するパネル。
 
-このリポジトリは、オープンソースの研究、学習、評価用途向けに公開されています。
+### ライセンス
 
-3DGS Editor 独自コードは MIT ライセンスです。同梱されている第三者コンポーネントは、それぞれの元ライセンスに従います。特に `gaussian-splatting/` と関連 CUDA モジュールは Gaussian-Splatting License の対象であり、原権利者から別途許可を得ない限り、非商用の研究および評価用途に制限されます。
+本リポジトリは、オープンソースの研究、学習、評価用途向けです。Gaussian Scene Workbench 独自コードは MIT License で提供されます。同梱される第三者コンポーネントは各ライセンスに従い、`gaussian-splatting/` と関連 CUDA モジュールは、別途許可がない限り非商用の研究・評価用途に制限されます。
 
-詳細は [LICENSE](LICENSE) と [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) を確認してください。
+詳細は [LICENSE](LICENSE) と [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) を参照してください。
 
-### ダウンロード
+### Windows 版
 
-ワンクリック Windows パッケージは GitHub Release で公開されています。
+- [Gaussian Scene Workbench 0.2.0 Windows x64](https://github.com/fubukisama/3DGS-Editor/releases/tag/v0.2.0)
+- パッケージ：`Gaussian-Scene-Workbench-0.2.0-win-x64.zip`
 
-- [3DGS Editor 0.1.4 Windows x64](https://github.com/fubukisama/3DGS-Editor/releases/tag/v0.1.4)
-- ファイル：`3DGS-Editor-0.1.4-win-x64.zip`
-- SHA256：Release の `3DGS-Editor-0.1.4-win-x64.zip.sha256` を確認してください。
+1. パッケージをシステムドライブ以外の書き込み可能なフォルダに展開します。
+2. `Setup Gaussian Scene Workbench.cmd` を実行し、ランタイム先を選択します。既定値は同じドライブ上の `Gaussian-Scene-Workbench-Runtime` です。
+3. セットアップ後は `Gaussian Scene Workbench.exe` で起動します。
 
-zip は GitHub の通常ファイルサイズ制限を超えるため、git にはコミットしていません。配布には Release アセットを使用してください。
-
-### クイックスタート
-
-1. `3DGS-Editor-0.1.4-win-x64.zip` をダウンロードして展開します。
-2. `Setup 3DGS Editor.cmd` をダブルクリックし、ランタイムのインストール先を選択します。Enter を押すと、パッケージと同じドライブの既定フォルダ、例: `E:\3DGS-Editor-Runtime` が使われます。
-3. セットアップ完了後、エディタが自動起動します。次回以降は `3DGS Editor.exe` をダブルクリックします。
-
-インストールせずに環境だけ確認する場合は、次を実行します。
+環境確認のみを行う場合：
 
 ```powershell
-.\Check 3DGS Editor Environment.cmd
+.\Check Gaussian Scene Workbench Environment.cmd
 ```
 
-英語、中国語、日本語のリリース手順は [README_RELEASE.md](README_RELEASE.md) を参照してください。
-
-### リポジトリ構成
-
-- `crop_editor/` - ローカル Web エディタと Python サーバー。
-- `resources/app/` - Electron デスクトップラッパーのソース。
-- `scripts/` - セットアップ、パッケージング、環境修復、ユーティリティスクリプト。
-- `training_kit/` - Windows 用の変換およびトレーニング補助バッチ。
-- `gaussian-splatting/` - 同梱の 3DGS トレーニングソースと CUDA 拡張ソース。
-
-`node_modules`、`datasets`、`output`、`desktop_app`、COLMAP ダウンロード、パッケージ済み Electron バイナリなどの実行時生成フォルダは git から除外しています。
-
-### リリースパッケージの作成
-
-準備済みの Windows ワークスペースで実行します。
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\update_version.ps1 -Note "変更内容を記入"
-powershell -ExecutionPolicy Bypass -File scripts\package_editor_release.ps1
-```
-
-生成された zip は GitHub Releases にアップロードする想定です。
-
-### バージョンと複数端末での作業手順
-
-コード変更やパッケージ作成の前に、必ずリモートの最新状態を取得してからバージョン情報を更新します。
-
-```powershell
-git pull --ff-only
-powershell -ExecutionPolicy Bypass -File scripts\update_version.ps1 -Note "変更内容を記入"
-```
-
-このスクリプトは `version`、`resources/app/package.json`、`build_manifest.json` を更新し、ソース版、パッケージ版、更新時刻、端末名、ブランチ、コミットを記録します。デスクトップ UI でもポート番号の横に実行中のバージョンが表示されるため、複数端末でどのビルドを開いているか確認できます。
-
-### 撮影データに関する注意
-
-COLMAP と 3DGS には、実際のカメラ移動と視差が必要です。同じ視点から撮った近似重複写真では、多くの特徴点が一致しても、疎な 3D 再構成を初期化できず `No good initial image pair found` で失敗する場合があります。
-
-小物体や展示物を撮影する場合は、対象の周囲を移動しながら少なくとも 50-100 枚を撮影し、十分な重なりを確保してください。同じ場所に立ったままカメラだけを回転させる撮影は避けてください。
+既存の `GS_EDITOR_*` 環境変数、`gaussian_splatting` Conda 環境、旧 `3DGS-Editor-Runtime` は引き続き利用できます。

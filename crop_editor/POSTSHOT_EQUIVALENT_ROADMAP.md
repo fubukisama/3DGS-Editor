@@ -1,4 +1,4 @@
-# 3DGS Editor Roadmap
+# Gaussian Scene Workbench Roadmap
 
 This project aims for Postshot-like local 3DGS workflow coverage without copying proprietary UI or implementation.
 

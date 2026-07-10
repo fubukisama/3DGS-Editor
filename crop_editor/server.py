@@ -5029,7 +5029,7 @@ def write_training_metadata(output, backend, quality=None, options=None):
     metadata = {
         "backend": backend,
         "created_at": time.time(),
-        "source": "3DGS Editor",
+        "source": "Gaussian Scene Workbench",
     }
     if quality:
         metadata["quality"] = quality
@@ -5040,7 +5040,7 @@ def write_training_metadata(output, backend, quality=None, options=None):
         scene_metadata = {
             "name": output.name,
             "created_at": metadata["created_at"],
-            "source": "3DGS Editor",
+            "source": "Gaussian Scene Workbench",
             "training": {
                 "backend": backend,
                 "quality": quality,
@@ -6810,7 +6810,7 @@ class Handler(BaseHTTPRequestHandler):
             parsed = urlparse(self.path)
             if parsed.path == "/api/app/health":
                 return self.send_json({
-                    "app": "3DGS Editor",
+                    "app": "Gaussian Scene Workbench",
                     "api_version": 2,
                     "version": read_app_manifest(),
                     "capabilities": {
@@ -7253,7 +7253,7 @@ def main():
         SPLAT_JOBS.update(load_persisted_splat_jobs())
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     url = f"http://{args.host}:{args.port}"
-    print(f"3DGS Crop Editor: {url}")
+    print(f"Gaussian Scene Workbench: {url}")
     print(f"Output root: {OUTPUT_DIR}")
     if not args.no_open:
         webbrowser.open(url)

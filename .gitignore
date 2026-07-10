@@ -2,6 +2,7 @@
 datasets/
 output/
 desktop_app/
+.playwright-cli/
 setup_3dgs_editor.log
 *.log
 

@@ -62,7 +62,7 @@ process.on("uncaughtException", (error) => {
     writeLogFile(`[${new Date().toISOString()}] ignored broken console pipe\n`);
     return;
   }
-  dialog.showErrorBox("3DGS Editor failed", error && error.stack ? error.stack : String(error));
+  dialog.showErrorBox("Gaussian Scene Workbench failed", error && error.stack ? error.stack : String(error));
   app.quit();
 });
 
@@ -127,7 +127,7 @@ function configurePaths() {
   ROOT = resolveProjectRoot();
   CROP_EDITOR_DIR = path.join(ROOT, "crop_editor");
   SERVER_PATH = path.join(CROP_EDITOR_DIR, "server.py");
-  LOG_PATH = path.join(ROOT, "desktop_app", "desktop_editor.log");
+  LOG_PATH = path.join(ROOT, "desktop_app", "gaussian_scene_workbench.log");
   fs.mkdirSync(path.dirname(LOG_PATH), { recursive: true });
   log(`ROOT=${ROOT}`);
   log(`SERVER_PATH=${SERVER_PATH}`);
@@ -215,7 +215,8 @@ async function isExistingEditorServer(port) {
 
 async function isCompatibleEditorServer(port) {
   const payload = await requestJson(`http://127.0.0.1:${port}/api/app/health`);
-  return Boolean(payload && payload.app === "3DGS Editor" && payload.capabilities && payload.capabilities.asset_manager);
+  const compatibleNames = new Set(["Gaussian Scene Workbench", "3DGS Editor"]);
+  return Boolean(payload && compatibleNames.has(payload.app) && payload.capabilities && payload.capabilities.asset_manager);
 }
 
 async function isReusableEditorServer(port) {
@@ -233,10 +234,10 @@ async function waitForPortAvailable(port, timeoutMs = 10000) {
 
 async function stopIncompatibleEditorServer(port) {
   if (!(await isExistingEditorServer(port)) || (await isCompatibleEditorServer(port))) return false;
-  log(`Existing 3DGS Editor server at http://127.0.0.1:${port} is missing required API capabilities; requesting restart`);
+  log(`Existing Gaussian Scene Workbench server at http://127.0.0.1:${port} is missing required API capabilities; requesting restart`);
   await postJson(`http://127.0.0.1:${port}/api/shutdown`);
   if (!(await waitForPortAvailable(port))) {
-    throw new Error(`Existing 3DGS Editor server on port ${port} did not stop in time. Close old 3DGS Editor windows and try again.`);
+    throw new Error(`Existing Gaussian Scene Workbench server on port ${port} did not stop in time. Close old workbench windows and try again.`);
   }
   return true;
 }
@@ -322,7 +323,7 @@ async function startPythonServer() {
     isExpectedServer: isReusableEditorServer
   });
   if (!startup.shouldStartServer) {
-    log(`Reusing existing 3DGS Editor server at http://127.0.0.1:${serverPort}`);
+    log(`Reusing existing Gaussian Scene Workbench server at http://127.0.0.1:${serverPort}`);
     return;
   }
   log(`Selected fixed ${app.isPackaged ? "packaged" : "development"} port ${serverPort}`);
@@ -485,7 +486,7 @@ async function createWindow() {
     height: 950,
     minWidth: 1100,
     minHeight: 700,
-    title: "3DGS Editor",
+    title: "Gaussian Scene Workbench",
     backgroundColor: "#111111",
     webPreferences: {
       contextIsolation: true,
@@ -531,7 +532,7 @@ app.whenReady().then(async () => {
         return;
       }
     } else {
-      dialog.showErrorBox("3DGS Editor failed to start", error.stack || error.message);
+      dialog.showErrorBox("Gaussian Scene Workbench failed to start", error.stack || error.message);
     }
     app.quit();
   }

@@ -46,7 +46,7 @@ html, body {
 }
 
 .toolbar-top {
-  grid-template-columns: 178px max-content max-content max-content;
+  grid-template-columns: 240px max-content max-content max-content;
   justify-content: start;
   align-items: stretch;
 }
@@ -969,7 +969,7 @@ body.nav-override #three {
   }
 
   .toolbar-top {
-    grid-template-columns: 160px max-content 238px;
+    grid-template-columns: 230px max-content 238px;
   }
 
   .view-section {
