@@ -2,6 +2,10 @@
 
 Gaussian Scene Workbench is distributed for open-source research, learning, and evaluation use. The repository includes third-party components with their own licenses. The root MIT terms apply only to original Gaussian Scene Workbench code and do not override these third-party licenses.
 
+## SIBR FPSCounter Design Reference
+
+The render-performance meter is a JavaScript adaptation of the rolling frame-time design used by SIBR's `FPSCounter` (Inria GRAPHDECO). No SIBR binaries are bundled. The reference implementation is distributed for non-commercial research and evaluation use: https://gitlab.inria.fr/sibr/sibr_core/-/blob/gaussian_code_release_union/src/core/view/FPSCounter.cpp
+
 ## Key License Constraints
 
 - `gaussian-splatting/`: Gaussian-Splatting License. This license limits use to non-commercial research and evaluation purposes unless separate permission is obtained from the original licensors.

@@ -12,7 +12,7 @@
 - Resume checkpoints, clone experiments, compare parameters, inspect curves, and review job history.
 - Load large Gaussian scenes, inspect cameras, select visible Gaussians on the GPU, crop, and edit scene content.
 - Run rendering and PSNR analysis, manage assets, and export splat, GLB, and mesh results.
-- Use resizable persistent panels and adaptive UI scaling on high-DPI displays.
+- Use resizable persistent panels, adaptive UI scaling, and a SIBR-style 60-frame GPU render-performance meter.
 
 ## License And Intended Use
 
@@ -22,15 +22,15 @@ See [LICENSE](LICENSE) and [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 
 ## Windows Download
 
-- [Gaussian Scene Workbench 0.2.0 Windows x64](https://github.com/fubukisama/3DGS-Editor/releases/tag/v0.2.0)
-- Package: `Gaussian-Scene-Workbench-0.2.0-win-x64.zip`
+- [Gaussian Scene Workbench 0.2.1 Windows x64](https://github.com/fubukisama/Gaussian-Scene-Workbench/releases/tag/v0.2.1)
+- Package: `Gaussian-Scene-Workbench-0.2.1-win-x64.zip`
 - Verify the package with the matching `.sha256` Release asset.
 
 The large Windows package is distributed through GitHub Releases rather than committed to git.
 
 ## Quick Start
 
-1. Download and extract `Gaussian-Scene-Workbench-0.2.0-win-x64.zip` to a writable folder, preferably outside the system drive.
+1. Download and extract `Gaussian-Scene-Workbench-0.2.1-win-x64.zip` to a writable folder, preferably outside the system drive.
 2. Double-click `Setup Gaussian Scene Workbench.cmd` and choose a runtime folder. Press Enter to use the same-drive default, such as `E:\Gaussian-Scene-Workbench-Runtime`.
 3. Setup launches the application when it finishes. Later, start it with `Gaussian Scene Workbench.exe`.
 
@@ -55,7 +55,7 @@ Generated folders such as `node_modules`, `datasets`, `output`, `desktop_app`, d
 ## Build A Release
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\update_version.ps1 -Version 36.10.0 -PackageVersion 0.2.0 -Bump none -Note "Gaussian Scene Workbench rebrand"
+powershell -ExecutionPolicy Bypass -File scripts\update_version.ps1 -Version 36.10.1 -PackageVersion 0.2.1 -Bump none -Note "SIBR-style GPU performance meter"
 powershell -ExecutionPolicy Bypass -File scripts\package_editor_release.ps1
 ```
 
@@ -78,7 +78,7 @@ COLMAP and Gaussian Splatting reconstruction require real camera motion and para
 - 恢复检查点、克隆实验、对比参数、查看训练曲线和任务历史。
 - 加载大型高斯场景，查看相机，使用 GPU 选择可见高斯并进行裁剪与编辑。
 - 执行渲染、PSNR 分析、资产管理以及 splat、GLB、网格导出。
-- 支持可调整并持久化的面板和高 DPI 自适应界面缩放。
+- 支持可调整并持久化的面板、高 DPI 自适应界面缩放，以及 SIBR 风格的 60 帧 GPU 渲染性能监控。
 
 ### 许可证与用途
 
@@ -88,8 +88,8 @@ COLMAP and Gaussian Splatting reconstruction require real camera motion and para
 
 ### Windows 下载
 
-- [Gaussian Scene Workbench 0.2.0 Windows x64](https://github.com/fubukisama/3DGS-Editor/releases/tag/v0.2.0)
-- 安装包：`Gaussian-Scene-Workbench-0.2.0-win-x64.zip`
+- [Gaussian Scene Workbench 0.2.1 Windows x64](https://github.com/fubukisama/Gaussian-Scene-Workbench/releases/tag/v0.2.1)
+- 安装包：`Gaussian-Scene-Workbench-0.2.1-win-x64.zip`
 - 使用 Release 中对应的 `.sha256` 文件校验安装包。
 
 ### 快速开始
@@ -131,7 +131,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package_editor_release.ps1
 - チェックポイント再開、実験の複製、パラメータ比較、学習曲線、ジョブ履歴。
 - GPU による可視 Gaussian 選択、クロップ、シーン編集、カメラ確認。
 - レンダリング、PSNR 解析、アセット管理、splat・GLB・メッシュ出力。
-- 高 DPI 対応 UI スケーリングと、サイズ・位置を保持するパネル。
+- 高 DPI 対応 UI スケーリング、状態を保持するパネル、SIBR 方式の 60 フレーム GPU 描画性能表示。
 
 ### ライセンス
 
@@ -141,8 +141,8 @@ powershell -ExecutionPolicy Bypass -File scripts\package_editor_release.ps1
 
 ### Windows 版
 
-- [Gaussian Scene Workbench 0.2.0 Windows x64](https://github.com/fubukisama/3DGS-Editor/releases/tag/v0.2.0)
-- パッケージ：`Gaussian-Scene-Workbench-0.2.0-win-x64.zip`
+- [Gaussian Scene Workbench 0.2.1 Windows x64](https://github.com/fubukisama/Gaussian-Scene-Workbench/releases/tag/v0.2.1)
+- パッケージ：`Gaussian-Scene-Workbench-0.2.1-win-x64.zip`
 
 1. パッケージをシステムドライブ以外の書き込み可能なフォルダに展開します。
 2. `Setup Gaussian Scene Workbench.cmd` を実行し、ランタイム先を選択します。既定値は同じドライブ上の `Gaussian-Scene-Workbench-Runtime` です。
