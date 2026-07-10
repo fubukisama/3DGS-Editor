@@ -9,6 +9,6 @@
     "machine":  "LAPTOP-QS64PJGJ",
     "gitBranch":  "main",
     "gitCommit":  "5ed496a",
-    "gitDirty":  true,
+    "gitDirty":  false,
     "note":  "Rename product to Gaussian Scene Workbench and refresh release documentation"
 }
