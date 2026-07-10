@@ -23,7 +23,8 @@ permissions:
 jobs:
   build:
     name: Qt 6 native preview
-    runs-on: windows-latest
+    # Qt's win64_msvc2022_64 package must use the VS 2022 runner image.
+    runs-on: windows-2022
     timeout-minutes: 30
 
     steps:
