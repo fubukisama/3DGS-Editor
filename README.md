@@ -5,6 +5,18 @@
 中文名：**高斯场景研究工作台**
 日本語名：**ガウスシーン研究ワークベンチ**
 
+## Native 0.3 Development
+
+The application is being rebuilt as a fully native Qt 6/C++ desktop program on the [`agent/native-desktop-0.3`](https://github.com/fubukisama/Gaussian-Scene-Workbench/tree/agent/native-desktop-0.3) branch. This target does not embed HTML, a browser engine, Electron, Node.js, or a local web server.
+
+- Current version: `0.3.0-native-preview`
+- Updated: `2026-07-11`
+- Windows builds: the [Native Windows workflow](https://github.com/fubukisama/Gaussian-Scene-Workbench/actions/workflows/native-windows.yml) publishes a downloadable artifact for each successful branch update.
+- Architecture and parity plan: [docs/NATIVE_MIGRATION.md](docs/NATIVE_MIGRATION.md)
+- Local build instructions: [native/README.md](native/README.md)
+
+The released `0.2.1` Electron application remains the stable fallback while the native branch reaches feature parity.
+
 ## Capabilities
 
 - Prepare image and video datasets with COLMAP-assisted reconstruction tools.
@@ -46,6 +58,8 @@ Existing `GS_EDITOR_*` environment variables, `gaussian_splatting` Conda environ
 
 - `crop_editor/` - local web workbench and Python service.
 - `resources/app/` - Electron desktop application.
+- `native/` - Qt 6/C++ desktop replacement and native tests.
+- `docs/NATIVE_MIGRATION.md` - renderer, training, and web-runtime retirement plan.
 - `scripts/` - setup, packaging, environment repair, and utilities.
 - `training_kit/` - Windows conversion and training helpers.
 - `gaussian-splatting/` - bundled training and CUDA extension sources.
@@ -118,6 +132,10 @@ powershell -ExecutionPolicy Bypass -File scripts\package_editor_release.ps1
 
 生成文件位于 `release\Gaussian-Scene-Workbench-<version>-win-x64.zip`。
 
+### 原生桌面版开发
+
+`0.3.0-native-preview` 已在 `agent/native-desktop-0.3` 分支开始重构。该版本使用 Qt 6/C++，不加载 HTML、Electron、Node.js 或本地网页服务器。GitHub Actions 会在每次推送后自动生成 Windows 预览 artifact；迁移阶段仍保留 `0.2.1` 作为稳定版本。
+
 ---
 
 ## 日本語
@@ -155,3 +173,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package_editor_release.ps1
 ```
 
 既存の `GS_EDITOR_*` 環境変数、`gaussian_splatting` Conda 環境、旧 `3DGS-Editor-Runtime` は引き続き利用できます。
+
+### ネイティブデスクトップ版の開発
+
+`0.3.0-native-preview` は `agent/native-desktop-0.3` ブランチで開発中です。Qt 6/C++ を使用し、HTML、Electron、Node.js、ローカル Web サーバーを実行しません。GitHub Actions は各更新から Windows プレビュー artifact を生成します。機能が揃うまでは `0.2.1` を安定版として維持します。

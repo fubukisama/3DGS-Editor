@@ -1,0 +1,96 @@
+name: Native Windows
+
+on:
+  push:
+    branches:
+      - agent/native-desktop-0.3
+    paths:
+      - "native/**"
+      - "scripts/build_native.ps1"
+      - ".github/workflows/native-windows.yml"
+      - "docs/NATIVE_MIGRATION.md"
+      - "README.md"
+  pull_request:
+    paths:
+      - "native/**"
+      - "scripts/build_native.ps1"
+      - ".github/workflows/native-windows.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Qt 6 native preview
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7
+
+      - name: Install Qt 6.8
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.3"
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          cache: true
+
+      - name: Configure
+        shell: pwsh
+        run: >-
+          cmake -S native -B native/build-ci
+          -G "Visual Studio 17 2022" -A x64
+          -DBUILD_TESTING=ON
+          -DGSW_RELEASE_DATE=2026-07-11
+
+      - name: Build
+        shell: pwsh
+        run: cmake --build native/build-ci --config Release --parallel
+
+      - name: Test
+        shell: pwsh
+        run: ctest --test-dir native/build-ci -C Release --output-on-failure
+
+      - name: Install application
+        shell: pwsh
+        run: cmake --install native/build-ci --config Release --prefix native/artifact
+
+      - name: Deploy Qt runtime
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "native/artifact/bin/Gaussian Scene Workbench.exe"
+          windeployqt --release --no-translations --compiler-runtime $exe
+          Copy-Item native/README.md native/artifact/README.md
+          Copy-Item native/build_manifest.json native/artifact/build_manifest.json
+          Copy-Item docs/NATIVE_MIGRATION.md native/artifact/NATIVE_MIGRATION.md
+          Copy-Item LICENSE native/artifact/LICENSE
+          Copy-Item THIRD_PARTY_LICENSES.md native/artifact/THIRD_PARTY_LICENSES.md
+
+      - name: Verify native-only package
+        shell: pwsh
+        run: |
+          $forbidden = Get-ChildItem native/artifact -Recurse -File | Where-Object {
+            $_.Name -match '^(node|electron)\.exe$' -or
+            $_.Name -match '^Qt6WebEngine' -or
+            $_.Extension -in '.html', '.js', '.css'
+          }
+          if ($forbidden) {
+            $forbidden | Select-Object -ExpandProperty FullName
+            throw "Native artifact contains a forbidden web runtime file."
+          }
+          $exe = "native/artifact/bin/Gaussian Scene Workbench.exe"
+          if (-not (Test-Path -LiteralPath $exe)) {
+            throw "Native executable is missing."
+          }
+
+      - name: Upload Windows preview
+        uses: actions/upload-artifact@v7
+        with:
+          name: Gaussian-Scene-Workbench-0.3.0-native-preview-win-x64
+          path: native/artifact/
+          if-no-files-found: error
+          retention-days: 30
