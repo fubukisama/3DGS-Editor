@@ -9,6 +9,6 @@
     "machine":  "LAPTOP-QS64PJGJ",
     "gitBranch":  "main",
     "gitCommit":  "0705b82",
-    "gitDirty":  true,
+    "gitDirty":  false,
     "note":  "SIBR-style GPU render-performance meter"
 }
