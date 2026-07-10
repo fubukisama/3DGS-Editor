@@ -938,7 +938,7 @@ body.nav-override #three {
   position: absolute;
   top: 12px;
   right: 12px;
-  min-width: 72px;
+  min-width: 132px;
   height: 26px;
   display: inline-flex;
   align-items: center;

@@ -22,6 +22,7 @@ import { shouldKeepUnsavedMeshTrim } from "./mesh-state.mjs?v=20260616_mesh_relo
 import { createTrainingFileStore } from "./training-files.mjs";
 import { makePanelDraggable } from "./floating-panels.mjs";
 import { createFpsMeter } from "./fps-meter.mjs";
+import { createGpuRenderTimer } from "./gpu-render-timer.mjs";
 import { existingTrainingOutputSceneName, trainingOutputSceneName } from "./training-targets.mjs?v=20260625_aligned_source";
 import {
   meshActionsForMode,
@@ -778,6 +779,7 @@ let uiScaleMode = normalizeUiScaleMode(localStorage.getItem(UI_SCALE_STORAGE_KEY
 let currentUiScale = 1;
 
 let renderer, scene, centerGizmoScene, pickingScene, camera, controls, pointCloud, splatCloud, pickingCloud, pickingTarget, cameraGroup, selectionPoints, meshObject, meshSelectionPoints, centerGizmo;
+let gpuRenderTimer = null;
 let focusRaycaster = null;
 let realSplatViewer = null;
 let realSplatSceneIndex = null;
@@ -841,8 +843,8 @@ let threeReady = false;
 let centerGizmoRadius = 1;
 let lastToolbarHeight = 0;
 let activeRibbonPanel = "";
-const fpsMeter = createFpsMeter({ sampleMs: 500 });
-let displayedFps = null;
+const fpsMeter = createFpsMeter({ smoothingFrames: 60, minSamples: 5 });
+let displayedFpsText = "";
 
 function dot3(a, b) {
   return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -1154,6 +1156,7 @@ function setRibbonPanel(panel, persist = true) {
 
 function initThree() {
   renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  gpuRenderTimer = createGpuRenderTimer(renderer.getContext());
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   scene = new THREE.Scene();
   centerGizmoScene = new THREE.Scene();
@@ -5094,18 +5097,61 @@ function resize() {
   if (controls && controls.handleResize) controls.handleResize();
 }
 
-function updateFpsMeter(nowMs) {
+function updateFpsMeter(frameTimeMs) {
   if (!fpsMeterEl) return;
-  const fps = fpsMeter.tick(nowMs);
-  if (fps && fps !== displayedFps) {
-    displayedFps = fps;
-    fpsMeterEl.textContent = `FPS ${fps}`;
+  const metrics = fpsMeter.recordFrame(frameTimeMs);
+  if (metrics.fps) {
+    const text = `FPS ${metrics.fps.toFixed(1)}  ${metrics.frameTimeMs.toFixed(2)} ms`;
+    if (text !== displayedFpsText) {
+      displayedFpsText = text;
+      fpsMeterEl.textContent = text;
+    }
   }
 }
 
-function animate(nowMs) {
+function hasRenderableModel() {
+  const realSplatsVisible = Boolean(
+    realSplatReady &&
+    realSplatViewer?.splatMesh?.visible &&
+    document.getElementById("showRealSplats")?.checked
+  );
+  const gaussianPreviewVisible = Boolean(
+    positions?.length &&
+    (pointCloud?.visible || splatCloud?.visible)
+  );
+  return realSplatsVisible || gaussianPreviewVisible || Boolean(meshObject?.visible);
+}
+
+function resetFpsMeterDisplay() {
+  fpsMeter.reset();
+  gpuRenderTimer?.reset();
+  displayedFpsText = "";
+  if (fpsMeterEl) fpsMeterEl.textContent = "FPS --  -- ms";
+}
+
+function completeRenderMeasurement(renderStart, gpuFrameTimeMs, queryStarted, monitorFrame) {
+  if (queryStarted) gpuRenderTimer.end();
+  if (!monitorFrame) {
+    resetFpsMeterDisplay();
+    return;
+  }
+  const cpuFrameTimeMs = performance.now() - renderStart;
+  if (gpuRenderTimer?.supported()) {
+    if (gpuFrameTimeMs === null) return;
+    updateFpsMeter(Math.max(cpuFrameTimeMs, gpuFrameTimeMs));
+    if (fpsMeterEl) fpsMeterEl.title = "SIBR-style 60-frame average using asynchronous GPU render timing.";
+    return;
+  }
+  updateFpsMeter(cpuFrameTimeMs);
+  if (fpsMeterEl) fpsMeterEl.title = "SIBR-style 60-frame average using CPU render timing because GPU timing is unavailable.";
+}
+
+function animate() {
   requestAnimationFrame(animate);
-  updateFpsMeter(nowMs);
+  const monitorFrame = hasRenderableModel();
+  const gpuFrameTimeMs = monitorFrame && gpuRenderTimer?.supported() ? gpuRenderTimer.poll() : null;
+  const queryStarted = monitorFrame ? gpuRenderTimer?.begin() : false;
+  const renderStart = performance.now();
   controls.update();
   syncCenterGizmoToTarget();
   drawOverlay();
@@ -5114,11 +5160,13 @@ function animate(nowMs) {
     if (document.getElementById("showRealSplats")?.checked && realSplatReady) {
       realSplatViewer.render();
       renderCenterGizmoOverlay();
+      completeRenderMeasurement(renderStart, gpuFrameTimeMs, queryStarted, monitorFrame);
       return;
     }
   }
   renderer.render(scene, camera);
   renderCenterGizmoOverlay();
+  completeRenderMeasurement(renderStart, gpuFrameTimeMs, queryStarted, monitorFrame);
 }
 
 function renderCenterGizmoOverlay() {

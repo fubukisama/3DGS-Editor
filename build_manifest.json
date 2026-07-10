@@ -1,14 +1,14 @@
 {
     "appName":  "Gaussian Scene Workbench",
-    "sourceVersion":  "36.10.0",
-    "packageVersion":  "0.2.0",
-    "releaseTag":  "v0.2.0",
-    "packageName":  "Gaussian-Scene-Workbench-0.2.0-win-x64.zip",
-    "updatedAt":  "2026-07-10T19:27:18+09:00",
+    "sourceVersion":  "36.10.1",
+    "packageVersion":  "0.2.1",
+    "releaseTag":  "v0.2.1",
+    "packageName":  "Gaussian-Scene-Workbench-0.2.1-win-x64.zip",
+    "updatedAt":  "2026-07-10T19:52:32+09:00",
     "updatedBy":  "ztx",
     "machine":  "LAPTOP-QS64PJGJ",
-    "gitBranch":  "main",
-    "gitCommit":  "5ed496a",
-    "gitDirty":  false,
-    "note":  "Rename product to Gaussian Scene Workbench and refresh release documentation"
+    "gitBranch":  "agent/sibr-gpu-fps-meter",
+    "gitCommit":  "ca58a32",
+    "gitDirty":  true,
+    "note":  "SIBR-style GPU render-performance meter"
 }
