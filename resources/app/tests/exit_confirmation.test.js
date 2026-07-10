@@ -62,10 +62,13 @@ test("exit prompt uses the requested language", () => {
   window.emit("close", createCloseEvent());
 
   assert.equal(prompts[0].title, "終了確認");
+  assert.match(prompts[0].message, /Gaussian Scene Workbench/);
   assert.deepEqual(prompts[0].buttons, ["終了", "キャンセル"]);
   assert.equal(prompts[1].title, "Confirm Exit");
+  assert.match(prompts[1].message, /Gaussian Scene Workbench/);
   assert.deepEqual(prompts[1].buttons, ["Exit", "Cancel"]);
   assert.equal(prompts[2].title, "确认退出");
+  assert.match(prompts[2].message, /高斯场景研究工作台/);
   assert.deepEqual(prompts[2].buttons, ["退出", "取消"]);
 });
 

@@ -81,11 +81,11 @@ $gitBranch = Get-GitValue -GitArgs @("branch", "--show-current")
 $dirty = Get-GitValue -GitArgs @("status", "--short")
 
 $manifest = [ordered]@{
-  appName = "3DGS Editor"
+  appName = "Gaussian Scene Workbench"
   sourceVersion = $Version
   packageVersion = $PackageVersion
   releaseTag = "v$PackageVersion"
-  packageName = "3DGS-Editor-$PackageVersion-win-x64.zip"
+  packageName = "Gaussian-Scene-Workbench-$PackageVersion-win-x64.zip"
   updatedAt = $updatedAt
   updatedBy = $env:USERNAME
   machine = $env:COMPUTERNAME

@@ -12,7 +12,7 @@ $DesktopApp = Join-Path $Root "resources\app"
 if (-not (Test-Path -LiteralPath (Join-Path $DesktopApp "package.json"))) {
   $DesktopApp = Join-Path $Root "desktop_app"
 }
-$PackageDir = Join-Path $DesktopApp "dist\3DGS Editor-win32-x64"
+$PackageDir = Join-Path $DesktopApp "dist\Gaussian Scene Workbench-win32-x64"
 $ReleaseRoot = Join-Path $Root "release"
 
 if ([string]::IsNullOrWhiteSpace($Version)) {
@@ -66,13 +66,13 @@ if (-not $SkipElectronPackage) {
   }
 }
 
-if (-not (Test-Path -LiteralPath (Join-Path $PackageDir "3DGS Editor.exe"))) {
+if (-not (Test-Path -LiteralPath (Join-Path $PackageDir "Gaussian Scene Workbench.exe"))) {
   throw "Packaged executable not found: $PackageDir"
 }
 
 $excludeCommon = @(
   ".git", "__pycache__", ".pytest_cache", ".preview", "dist", "release",
-  "desktop_editor.log", "crop_editor_server_upgrade.log", "crop_editor_server_upgrade.err.log"
+  "desktop_editor.log", "gaussian_scene_workbench.log", "crop_editor_server_upgrade.log", "crop_editor_server_upgrade.err.log"
 )
 
 Copy-TreeFiltered (Join-Path $Root "crop_editor") (Join-Path $PackageDir "crop_editor") @("__pycache__", ".pytest_cache", ".preview", ".jobs")
@@ -97,8 +97,8 @@ if ($IncludeOutputs -and (Test-Path -LiteralPath (Join-Path $Root "output"))) {
   Copy-TreeFiltered (Join-Path $Root "output") (Join-Path $PackageDir "output") @("__pycache__")
 }
 
-Copy-Item -LiteralPath (Join-Path $Root "Setup 3DGS Editor.cmd") -Destination (Join-Path $PackageDir "Setup 3DGS Editor.cmd") -Force
-Copy-Item -LiteralPath (Join-Path $Root "Check 3DGS Editor Environment.cmd") -Destination (Join-Path $PackageDir "Check 3DGS Editor Environment.cmd") -Force
+Copy-Item -LiteralPath (Join-Path $Root "Setup Gaussian Scene Workbench.cmd") -Destination (Join-Path $PackageDir "Setup Gaussian Scene Workbench.cmd") -Force
+Copy-Item -LiteralPath (Join-Path $Root "Check Gaussian Scene Workbench Environment.cmd") -Destination (Join-Path $PackageDir "Check Gaussian Scene Workbench Environment.cmd") -Force
 Copy-Item -LiteralPath (Join-Path $Root "LICENSE") -Destination (Join-Path $PackageDir "LICENSE") -Force -ErrorAction SilentlyContinue
 Copy-Item -LiteralPath (Join-Path $Root "THIRD_PARTY_LICENSES.md") -Destination (Join-Path $PackageDir "THIRD_PARTY_LICENSES.md") -Force -ErrorAction SilentlyContinue
 Copy-Item -LiteralPath (Join-Path $Root "README_RELEASE.md") -Destination (Join-Path $PackageDir "README_RELEASE.md") -Force -ErrorAction SilentlyContinue
@@ -107,7 +107,7 @@ Copy-Item -LiteralPath (Join-Path $Root "version") -Destination (Join-Path $Pack
 Copy-Item -LiteralPath (Join-Path $Root "build_manifest.json") -Destination (Join-Path $PackageDir "build_manifest.json") -Force -ErrorAction SilentlyContinue
 
 New-Item -ItemType Directory -Force -Path $ReleaseRoot | Out-Null
-$zip = Join-Path $ReleaseRoot ("3DGS-Editor-{0}-win-x64.zip" -f $Version)
+$zip = Join-Path $ReleaseRoot ("Gaussian-Scene-Workbench-{0}-win-x64.zip" -f $Version)
 if (Test-Path -LiteralPath $zip) {
   Remove-Item -LiteralPath $zip -Force
 }

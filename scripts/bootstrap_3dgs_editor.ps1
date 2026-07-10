@@ -7,7 +7,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$Log = Join-Path $Root "setup_3dgs_editor.log"
+$Log = Join-Path $Root "setup_gaussian_scene_workbench.log"
 
 function Write-Step($message) {
   $line = "[{0}] {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $message
@@ -68,7 +68,7 @@ function Invoke-Download($url, $destination) {
   [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
   New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
   Write-Step "Downloading: $url"
-  Invoke-WebRequest -Uri $url -OutFile $destination -Headers @{ "User-Agent" = "3DGS-Editor-Setup" }
+  Invoke-WebRequest -Uri $url -OutFile $destination -Headers @{ "User-Agent" = "Gaussian-Scene-Workbench-Setup" }
 }
 
 function Add-SetupPath($path) {
@@ -82,7 +82,13 @@ function Get-InstallDriveRoot {
 }
 
 function Get-DefaultInstallRoot {
-  return Join-Path (Get-InstallDriveRoot) "3DGS-Editor-Runtime"
+  $drive = Get-InstallDriveRoot
+  $current = Join-Path $drive "Gaussian-Scene-Workbench-Runtime"
+  $legacy = Join-Path $drive "3DGS-Editor-Runtime"
+  if ((Test-Path -LiteralPath $legacy) -and -not (Test-Path -LiteralPath $current)) {
+    return $legacy
+  }
+  return $current
 }
 
 function Resolve-RuntimeRoot {
@@ -175,7 +181,7 @@ function Install-Git {
   $downloadDir = Join-Path $Root "third_party\downloads"
   New-Item -ItemType Directory -Force -Path $downloadDir | Out-Null
   Write-Step "Querying Git for Windows releases..."
-  $release = Invoke-RestMethod -Uri "https://api.github.com/repos/git-for-windows/git/releases/latest" -Headers @{ "User-Agent" = "3DGS-Editor-Setup" }
+  $release = Invoke-RestMethod -Uri "https://api.github.com/repos/git-for-windows/git/releases/latest" -Headers @{ "User-Agent" = "Gaussian-Scene-Workbench-Setup" }
   $asset = @($release.assets) | Where-Object { $_.name -match "64-bit\.exe$" -and $_.name -notmatch "portable|minGit" } | Select-Object -First 1
   if (-not $asset) {
     Write-Step "Could not find Git installer asset; falling back to winget."
@@ -209,7 +215,7 @@ function Install-NodeRuntime {
   New-Item -ItemType Directory -Force -Path $downloadDir | Out-Null
   if (Test-Path -LiteralPath $extractDir) { Remove-Item -LiteralPath $extractDir -Recurse -Force }
   New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
-  $index = Invoke-RestMethod -Uri "https://nodejs.org/dist/index.json" -Headers @{ "User-Agent" = "3DGS-Editor-Setup" }
+  $index = Invoke-RestMethod -Uri "https://nodejs.org/dist/index.json" -Headers @{ "User-Agent" = "Gaussian-Scene-Workbench-Setup" }
   $release = @($index) | Where-Object { $_.lts -and ($_.files -contains "win-x64-zip") } | Select-Object -First 1
   if (-not $release) { throw "Could not find a Node.js LTS win-x64 zip." }
   $zipName = "node-$($release.version)-win-x64.zip"
@@ -292,7 +298,7 @@ function Install-Colmap {
 
   Write-Step "Querying COLMAP releases..."
   [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-  $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/colmap/colmap/releases" -Headers @{ "User-Agent" = "3DGS-Editor-Setup" }
+  $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/colmap/colmap/releases" -Headers @{ "User-Agent" = "Gaussian-Scene-Workbench-Setup" }
   $asset = $null
   foreach ($release in $releases) {
     $asset = @($release.assets) | Where-Object { $_.name -match "(?i)windows.*cuda.*\.zip$|colmap.*cuda.*windows.*\.zip$|colmap-x64-windows-cuda.*\.zip$" } | Select-Object -First 1
@@ -310,7 +316,7 @@ function Install-Colmap {
 
   $zip = Join-Path $downloadDir $asset.name
   Write-Step "Downloading COLMAP: $($asset.browser_download_url)"
-  Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zip -Headers @{ "User-Agent" = "3DGS-Editor-Setup" }
+  Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zip -Headers @{ "User-Agent" = "Gaussian-Scene-Workbench-Setup" }
   Write-Step "Extracting COLMAP..."
   Expand-Archive -LiteralPath $zip -DestinationPath $extractDir -Force
 
@@ -528,7 +534,7 @@ function Ensure-3DGSSubmodulePaths {
   Write-Step "OK: 3DGS extension path file -> $pth"
 }
 
-Write-Step "3DGS Editor setup started."
+Write-Step "Gaussian Scene Workbench setup started."
 Write-Step "Root: $Root"
 $script:RuntimeRoot = Resolve-RuntimeRoot
 $script:MiniforgeRoot = Join-Path $script:RuntimeRoot "miniforge3"

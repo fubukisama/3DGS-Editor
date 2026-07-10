@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const appSource = fs.readFileSync(path.join(process.cwd(), "static", "app.js"), "utf8");
+const indexSource = fs.readFileSync(path.join(process.cwd(), "static", "index.html"), "utf8");
 
 function topLevelDeclarationIndex(source, declaration) {
   let depth = 0;
@@ -24,4 +25,9 @@ test("UI scale controls are available during app startup", () => {
   assert.notEqual(topLevelDeclarationIndex(appSource, "const UI_SCALE_CHOICES"), -1);
   assert.match(appSource, /cropEditorUiScale/);
   assert.match(appSource, /function computeAutoUiScale/);
+});
+
+test("workbench branding is present in the document shell", () => {
+  assert.match(indexSource, /<title>Gaussian Scene Workbench<\/title>/);
+  assert.match(indexSource, /<strong class="brand">Gaussian Scene Workbench<\/strong>/);
 });

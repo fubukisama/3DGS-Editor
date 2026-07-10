@@ -1,4 +1,4 @@
-# 3DGS Crop Editor
+# Gaussian Scene Workbench Web Interface
 
 Local editor for trained 3D Gaussian Splatting models.
 

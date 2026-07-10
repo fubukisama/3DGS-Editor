@@ -28,7 +28,7 @@ test("invalid port values are rejected", () => {
   assert.throws(() => parsePort("abc"), /Invalid port/);
 });
 
-test("occupied port is reused when it already serves 3DGS Editor", async () => {
+test("occupied port is reused when it already serves Gaussian Scene Workbench", async () => {
   const startup = await resolveServerPort(PACKAGED_PORT, {
     isPackaged: true,
     checkPortAvailable: async () => false,

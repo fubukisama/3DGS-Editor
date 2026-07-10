@@ -1,6 +1,6 @@
 # Third-Party Licenses
 
-3DGS Editor is distributed for open-source research, learning, and evaluation use. The repository includes third-party components with their own licenses. The root MIT terms apply only to original 3DGS Editor code and do not override these third-party licenses.
+Gaussian Scene Workbench is distributed for open-source research, learning, and evaluation use. The repository includes third-party components with their own licenses. The root MIT terms apply only to original Gaussian Scene Workbench code and do not override these third-party licenses.
 
 ## Key License Constraints
 

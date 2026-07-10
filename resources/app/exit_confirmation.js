@@ -2,19 +2,19 @@ const EXIT_TEXT = {
   en: {
     title: "Confirm Exit",
     buttons: ["Exit", "Cancel"],
-    message: "Exit 3DGS Editor?",
+    message: "Exit Gaussian Scene Workbench?",
     detail: "Exiting stops the training, COLMAP, server, and other background processes started by this app."
   },
   zh: {
     title: "确认退出",
     buttons: ["退出", "取消"],
-    message: "确定要退出 3DGS Editor 吗？",
+    message: "确定要退出高斯场景研究工作台吗？",
     detail: "退出后会停止当前软件启动的训练、COLMAP、服务端等后台进程。"
   },
   ja: {
     title: "終了確認",
     buttons: ["終了", "キャンセル"],
-    message: "3DGS Editor を終了しますか？",
+    message: "Gaussian Scene Workbench を終了しますか？",
     detail: "終了すると、このアプリが起動したトレーニング、COLMAP、サーバーなどのバックグラウンドプロセスを停止します。"
   }
 };
