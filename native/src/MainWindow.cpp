@@ -1,7 +1,11 @@
 #include "MainWindow.h"
 
 #include "AppTheme.h"
+#include "BackendLocator.h"
 #include "ColmapSupport.h"
+#include "DatasetImportDialog.h"
+#include "DatasetImportPlan.h"
+#include "ImportEnvironmentProbe.h"
 #include "ReconstructionDialog.h"
 #include "TrainingDialog.h"
 
@@ -14,12 +18,15 @@
 #include <QDateTime>
 #include <QDir>
 #include <QDockWidget>
+#include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFormLayout>
 #include <QFrame>
 #include <QGuiApplication>
+#include <QHash>
 #include <QHeaderView>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLabel>
@@ -27,13 +34,13 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QPlainTextEdit>
+#include <QProcess>
 #include <QProcessEnvironment>
 #include <QRegularExpression>
 #include <QScreen>
 #include <QScrollArea>
 #include <QSettings>
 #include <QSaveFile>
-#include <QStandardPaths>
 #include <QStatusBar>
 #include <QStyle>
 #include <QSpinBox>
@@ -41,9 +48,11 @@
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QTextCursor>
+#include <QTimer>
 #include <QToolBar>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
+#include <QTemporaryFile>
 #include <QUuid>
 #include <QVBoxLayout>
 
@@ -70,6 +79,21 @@ QString compactPath(const QString &path) {
   return path.isEmpty() ? QStringLiteral("-") : QDir::toNativeSeparators(path);
 }
 
+QString comparablePath(const QString &path) {
+  const QFileInfo info(path);
+  const QString canonical = info.canonicalFilePath();
+  return QDir::cleanPath(canonical.isEmpty() ? info.absoluteFilePath() : canonical);
+}
+
+bool pathsReferToSameLocation(const QString &left, const QString &right) {
+#ifdef Q_OS_WIN
+  constexpr Qt::CaseSensitivity sensitivity = Qt::CaseInsensitive;
+#else
+  constexpr Qt::CaseSensitivity sensitivity = Qt::CaseSensitive;
+#endif
+  return comparablePath(left).compare(comparablePath(right), sensitivity) == 0;
+}
+
 QString formatFileSize(const qint64 bytes) {
   if (bytes >= 1024LL * 1024LL * 1024LL) {
     return QStringLiteral("%1 GB").arg(static_cast<double>(bytes) / (1024.0 * 1024.0 * 1024.0), 0, 'f', 2);
@@ -84,6 +108,36 @@ QString safeFileName(QString value) {
   value.replace(QRegularExpression(QStringLiteral(R"([<>:"/\\|?*]+)")), QStringLiteral("_"));
   value = value.trimmed();
   return value.isEmpty() ? QStringLiteral("gaussian-scene") : value;
+}
+
+QString safeSceneName(QString value) {
+  value = value.trimmed();
+  value.replace(QRegularExpression(QStringLiteral("[^A-Za-z0-9_.-]+")),
+                QStringLiteral("_"));
+  while (value.contains(QStringLiteral(".."))) {
+    value.replace(QStringLiteral(".."), QStringLiteral("_"));
+  }
+  return value.isEmpty() ? QStringLiteral("dataset") : value;
+}
+
+QString workerStageLabel(const QString &stage) {
+  static const QHash<QString, QString> labels = {
+      {QStringLiteral("queued"), QStringLiteral("排队")},
+      {QStringLiteral("preparing"), QStringLiteral("准备")},
+      {QStringLiteral("archiving"), QStringLiteral("归档原文件")},
+      {QStringLiteral("copying_images"), QStringLiteral("复制图像")},
+      {QStringLiteral("extracting_frames"), QStringLiteral("视频抽帧")},
+      {QStringLiteral("masks"), QStringLiteral("处理蒙版")},
+      {QStringLiteral("finalizing"), QStringLiteral("提交数据集")},
+      {QStringLiteral("environment"), QStringLiteral("检查环境")},
+      {QStringLiteral("prepare"), QStringLiteral("准备训练")},
+      {QStringLiteral("colmap"), QStringLiteral("COLMAP 重建")},
+      {QStringLiteral("train"), QStringLiteral("训练")},
+      {QStringLiteral("done"), QStringLiteral("完成")},
+      {QStringLiteral("failed"), QStringLiteral("失败")},
+      {QStringLiteral("cancelled"), QStringLiteral("已取消")},
+  };
+  return labels.value(stage, stage);
 }
 
 bool twoDgsAvailable(const QString &repositoryRoot) {
@@ -116,12 +170,30 @@ QProcessEnvironment pythonProcessEnvironment(const QString &pythonPath) {
   environment.insert(QStringLiteral("GAUSSIAN_SPLATTING_CONDA_PREFIX"), prefix);
   environment.insert(QStringLiteral("GS_CONDA_PREFIX"), prefix);
   environment.insert(QStringLiteral("PYTHONUTF8"), QStringLiteral("1"));
+  environment.insert(QStringLiteral("PYTHONDONTWRITEBYTECODE"), QStringLiteral("1"));
   return environment;
+}
+
+bool hasImportRecoveryArtifacts(const QString &datasetRoot) {
+  const QDir directory(datasetRoot);
+  if (!directory.exists()) {
+    return false;
+  }
+
+  static const QRegularExpression artifactPattern(
+      QStringLiteral(R"(^\..+\.(?:import-transaction\.json|import-.+|backup-.+)$)"));
+  const QFileInfoList entries = directory.entryInfoList(
+      QDir::AllEntries | QDir::Hidden | QDir::System | QDir::NoDotAndDotDot);
+  return std::any_of(entries.cbegin(), entries.cend(), [](const QFileInfo &entry) {
+    return artifactPattern.match(entry.fileName()).hasMatch();
+  });
 }
 } // namespace
 
 MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent), mWorkspace(this), mProcessSupervisor(this) {
+    : QMainWindow(parent),
+      mWorkspace(this),
+      mProcessSupervisor(this) {
   mUiScalePercent = qApp->property("gswUiScalePercent").toInt();
   if (mUiScalePercent <= 0) {
     mUiScalePercent = 90;
@@ -150,6 +222,11 @@ MainWindow::MainWindow(QWidget *parent)
 }
 
 bool MainWindow::openProjectFile(const QString &filePath) {
+  if (mProcessSupervisor.isRunning()) {
+    QMessageBox::information(this, QStringLiteral("任务仍在运行"),
+                             QStringLiteral("请先停止或等待当前任务结束，再切换工程。"));
+    return false;
+  }
   if (!confirmDiscardChanges()) {
     return false;
   }
@@ -158,15 +235,46 @@ bool MainWindow::openProjectFile(const QString &filePath) {
     showError(QStringLiteral("无法打开工程"), error);
     return false;
   }
+  mRecoveryBlocked = true;
+  updateWorkspaceUi();
+  statusBar()->showMessage(QStringLiteral("正在检查未完成的导入事务…"));
+  QApplication::setOverrideCursor(Qt::WaitCursor);
+  const bool recovered = recoverInterruptedProjectImports(&error);
+  QApplication::restoreOverrideCursor();
+  statusBar()->clearMessage();
+  if (!recovered) {
+    updateWorkspaceUi();
+    appendTaskEvent(QStringLiteral("工程已打开，但未完成的导入事务恢复失败：%1")
+                        .arg(error));
+    showError(QStringLiteral("无法恢复未完成的导入"),
+              QStringLiteral("工程已打开，但数据集导入事务尚未恢复。请勿手动修改 datasets "
+                             "目录中的隐藏事务文件；修复后重新打开工程即可重试。\n\n%1")
+                  .arg(error));
+    return false;
+  }
+  mRecoveryBlocked = false;
+  updateWorkspaceUi();
   appendTaskEvent(QStringLiteral("已打开工程：%1").arg(QDir::toNativeSeparators(filePath)));
   return true;
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {
-  if (!confirmDiscardChanges()) {
-    event->ignore();
+  if (mClosePending) {
+    if (mProcessSupervisor.isRunning()) {
+      event->ignore();
+      return;
+    }
+    mClosePending = false;
+    statusBar()->clearMessage();
+    if (!confirmDiscardChanges()) {
+      event->ignore();
+      return;
+    }
+    saveWindowState();
+    event->accept();
     return;
   }
+
   if (mProcessSupervisor.isRunning()) {
     const QMessageBox::StandardButton answer = QMessageBox::question(
         this, QStringLiteral("任务仍在运行"), QStringLiteral("关闭软件将停止当前任务。是否继续？"),
@@ -175,22 +283,34 @@ void MainWindow::closeEvent(QCloseEvent *event) {
       event->ignore();
       return;
     }
-    mProcessSupervisor.stop();
+    if (mProcessSupervisor.isRunning()) {
+      mClosePending = true;
+      statusBar()->showMessage(QStringLiteral("正在停止任务，完成后将关闭软件…"));
+      mProcessSupervisor.stop();
+      event->ignore();
+      return;
+    }
+  }
+  if (!confirmDiscardChanges()) {
+    event->ignore();
+    return;
   }
   saveWindowState();
   event->accept();
 }
 
 void MainWindow::createActions() {
-  auto *newAction = new QAction(style()->standardIcon(QStyle::SP_FileIcon), QStringLiteral("新建工程"), this);
-  newAction->setShortcut(QKeySequence::New);
-  newAction->setToolTip(QStringLiteral("新建工程"));
-  connect(newAction, &QAction::triggered, this, &MainWindow::newProject);
+  mNewProjectAction = new QAction(style()->standardIcon(QStyle::SP_FileIcon),
+                                  QStringLiteral("新建工程"), this);
+  mNewProjectAction->setShortcut(QKeySequence::New);
+  mNewProjectAction->setToolTip(QStringLiteral("新建工程"));
+  connect(mNewProjectAction, &QAction::triggered, this, &MainWindow::newProject);
 
-  auto *openAction = new QAction(style()->standardIcon(QStyle::SP_DialogOpenButton), QStringLiteral("打开工程"), this);
-  openAction->setShortcut(QKeySequence::Open);
-  openAction->setToolTip(QStringLiteral("打开工程"));
-  connect(openAction, &QAction::triggered, this, [this]() {
+  mOpenProjectAction = new QAction(style()->standardIcon(QStyle::SP_DialogOpenButton),
+                                   QStringLiteral("打开工程"), this);
+  mOpenProjectAction->setShortcut(QKeySequence::Open);
+  mOpenProjectAction->setToolTip(QStringLiteral("打开工程"));
+  connect(mOpenProjectAction, &QAction::triggered, this, [this]() {
     const QString filePath = QFileDialog::getOpenFileName(
         this, QStringLiteral("打开 Gaussian Scene Workbench 工程"), {},
         QStringLiteral("GSW Project (*.gsw.json);;JSON (*.json);;All files (*.*)"));
@@ -208,9 +328,17 @@ void MainWindow::createActions() {
   saveAsAction->setShortcut(QKeySequence::SaveAs);
   connect(saveAsAction, &QAction::triggered, this, [this]() { saveProject(true); });
 
-  mImportDatasetAction = new QAction(style()->standardIcon(QStyle::SP_DirOpenIcon), QStringLiteral("导入数据集"), this);
-  mImportDatasetAction->setToolTip(QStringLiteral("导入图像数据集"));
+  mImportDatasetAction = new QAction(style()->standardIcon(QStyle::SP_DirOpenIcon),
+                                     QStringLiteral("导入照片/视频..."), this);
+  mImportDatasetAction->setToolTip(QStringLiteral("复制照片或视频到工程并自动抽帧"));
   connect(mImportDatasetAction, &QAction::triggered, this, &MainWindow::importDataset);
+
+  mAttachDatasetAction = new QAction(style()->standardIcon(QStyle::SP_DirLinkIcon),
+                                     QStringLiteral("关联已有数据集..."), this);
+  mAttachDatasetAction->setToolTip(
+      QStringLiteral("直接关联现有 images/input 与 COLMAP sparse 数据，不复制文件"));
+  connect(mAttachDatasetAction, &QAction::triggered, this,
+          &MainWindow::attachExistingDataset);
 
   mImportSceneAction = new QAction(style()->standardIcon(QStyle::SP_FileDialogDetailedView), QStringLiteral("导入高斯场景"), this);
   mImportSceneAction->setToolTip(QStringLiteral("导入 PLY 高斯场景"));
@@ -389,8 +517,8 @@ void MainWindow::createActions() {
   connect(resetLayoutAction, &QAction::triggered, this, &MainWindow::resetDockLayout);
   resetLayoutAction->setObjectName(QStringLiteral("resetLayoutAction"));
 
-  addAction(newAction);
-  addAction(openAction);
+  addAction(mNewProjectAction);
+  addAction(mOpenProjectAction);
   addAction(saveAsAction);
   addAction(environmentAction);
   addAction(resetCameraAction);
@@ -407,6 +535,7 @@ void MainWindow::createMenus() {
   fileMenu->addAction(actions().at(2));
   fileMenu->addSeparator();
   fileMenu->addAction(mImportDatasetAction);
+  fileMenu->addAction(mAttachDatasetAction);
   fileMenu->addAction(mImportSceneAction);
   fileMenu->addSeparator();
   fileMenu->addAction(actions().at(5));
@@ -679,12 +808,21 @@ void MainWindow::connectServices() {
     setWindowModified(modified);
   });
   connect(&mProcessSupervisor, &ProcessSupervisor::runningChanged, this, [this](const bool running) {
+    const bool workspaceReady = mWorkspace.hasProject() && !mRecoveryBlocked;
+    mNewProjectAction->setEnabled(!running);
+    mOpenProjectAction->setEnabled(!running);
     mStopAction->setEnabled(running);
-    mReconstructAction->setEnabled(!running && mWorkspace.hasProject() &&
+    mSaveAction->setEnabled(!running && workspaceReady);
+    mImportDatasetAction->setEnabled(!running && workspaceReady);
+    mAttachDatasetAction->setEnabled(!running && workspaceReady);
+    mImportSceneAction->setEnabled(!running && workspaceReady);
+    mReconstructAction->setEnabled(!running && workspaceReady &&
                                    !mWorkspace.datasetPath().isEmpty());
-    mTrainAction->setEnabled(!running && mWorkspace.hasProject() && !mWorkspace.datasetPath().isEmpty());
+    mTrainAction->setEnabled(!running && workspaceReady && !mWorkspace.datasetPath().isEmpty());
+    updateEditActions();
   });
   connect(&mProcessSupervisor, &ProcessSupervisor::taskStarted, this, [this](const QString &taskName) {
+    mActiveWorkerState.clear();
     mActiveTaskRow = mTaskTable->rowCount();
     mTaskTable->insertRow(mActiveTaskRow);
     auto *state = new QTableWidgetItem(QStringLiteral("运行中"));
@@ -697,19 +835,123 @@ void MainWindow::connectServices() {
     appendTaskEvent(QStringLiteral("开始任务：%1").arg(taskName));
   });
   connect(&mProcessSupervisor, &ProcessSupervisor::outputReady, this, &MainWindow::appendLog);
+  connect(&mProcessSupervisor, &ProcessSupervisor::workerStatusReady, this,
+          [this](const WorkerStatus &status) {
+            mActiveWorkerState = status.state;
+            if (mActiveTaskRow < 0 || mActiveTaskRow >= mTaskTable->rowCount()) {
+              return;
+            }
+            QString detail = workerStageLabel(status.stage);
+            if (status.progressPercent.has_value()) {
+              detail += QStringLiteral(" · %1%").arg(status.progressPercent.value());
+            }
+            mTaskTable->item(mActiveTaskRow, 3)->setText(detail);
+          });
   connect(&mProcessSupervisor, &ProcessSupervisor::taskFinished, this,
           [this](const QString &taskName, const int exitCode, const bool succeeded) {
+            const bool processCancelled =
+                mActiveWorkerState == QStringLiteral("cancelled") ||
+                exitCode == 130 || mProcessSupervisor.wasStopRequested();
+            bool effectiveSucceeded = succeeded;
+            bool recoveryFailed = false;
+
+            if (mPendingDatasetImport.has_value() &&
+                mPendingDatasetImport->taskName == taskName) {
+              const PendingDatasetImport pending = *mPendingDatasetImport;
+              mPendingDatasetImport.reset();
+              QString recoveryError;
+              bool committed = false;
+              if (!recoverDatasetImport(pending, &recoveryError, &committed)) {
+                recoveryFailed = true;
+                effectiveSucceeded = false;
+                mClosePending = false;
+                if (mWorkspace.hasProject() &&
+                    pathsReferToSameLocation(mWorkspace.rootPath(), pending.projectRoot)) {
+                  mRecoveryBlocked = true;
+                  updateWorkspaceUi();
+                }
+                statusBar()->clearMessage();
+                appendTaskEvent(QStringLiteral("导入事务恢复失败：%1")
+                                    .arg(recoveryError));
+                showError(QStringLiteral("无法恢复导入事务"),
+                          QStringLiteral("任务已结束，但无法确认数据集事务状态。为避免丢失数据，"
+                                         "软件不会自动关闭；请修复问题后重新打开工程。\n\n%1")
+                              .arg(recoveryError));
+              } else {
+                effectiveSucceeded = succeeded || committed;
+                if (committed && !succeeded) {
+                  appendTaskEvent(
+                      QStringLiteral("导入进程虽已中断，但数据集提交已完成；将保留并关联新数据集。"));
+                  if (mActiveTaskRow >= 0 &&
+                      mActiveTaskRow < mTaskTable->rowCount()) {
+                    mTaskTable->item(mActiveTaskRow, 3)
+                        ->setText(QStringLiteral("提交已确认"));
+                  }
+                } else if (!effectiveSucceeded) {
+                  appendTaskEvent(
+                      QStringLiteral("已清理未完成的导入事务；提交前的数据已恢复。"));
+                }
+              }
+
+              if (effectiveSucceeded &&
+                  !pathsReferToSameLocation(mWorkspace.rootPath(), pending.projectRoot)) {
+                appendTaskEvent(
+                    QStringLiteral("数据集已导入到原工程，但当前工程已切换，因此未自动关联：%1")
+                        .arg(QDir::toNativeSeparators(pending.datasetPath)));
+              } else if (effectiveSucceeded) {
+                QString error;
+                if (WorkspaceDocument::countDatasetImages(pending.datasetPath) <= 0 ||
+                    !mWorkspace.setDatasetPath(pending.datasetPath, &error)) {
+                  showError(QStringLiteral("导入结果无效"),
+                            error.isEmpty()
+                                ? QStringLiteral("导入任务完成，但目标数据集中没有可用图像：%1")
+                                      .arg(QDir::toNativeSeparators(pending.datasetPath))
+                                : error);
+                } else {
+                  QString saveError;
+                  if (!mWorkspace.projectFilePath().isEmpty() &&
+                      !mWorkspace.save({}, &saveError)) {
+                    appendTaskEvent(QStringLiteral("数据集已导入，但工程自动保存失败：%1")
+                                        .arg(saveError));
+                  }
+                  appendTaskEvent(QStringLiteral("当前数据集已切换到：%1")
+                                      .arg(QDir::toNativeSeparators(pending.datasetPath)));
+                }
+              }
+            }
+
+            const bool cancelled =
+                processCancelled && !effectiveSucceeded && !recoveryFailed;
             if (mActiveTaskRow >= 0 && mActiveTaskRow < mTaskTable->rowCount()) {
               auto *state = mTaskTable->item(mActiveTaskRow, 0);
-              state->setText(succeeded ? QStringLiteral("完成") : QStringLiteral("失败"));
-              state->setForeground(succeeded ? QColor(102, 193, 168) : QColor(211, 95, 95));
-              mTaskTable->item(mActiveTaskRow, 3)->setText(
-                  succeeded ? QStringLiteral("退出码 0") : QStringLiteral("退出码 %1").arg(exitCode));
+              state->setText(effectiveSucceeded
+                                 ? QStringLiteral("完成")
+                                 : cancelled ? QStringLiteral("已取消")
+                                             : QStringLiteral("失败"));
+              state->setForeground(effectiveSucceeded
+                                       ? QColor(102, 193, 168)
+                                       : cancelled ? QColor(218, 169, 82)
+                                                   : QColor(211, 95, 95));
+              if (!effectiveSucceeded) {
+                mTaskTable->item(mActiveTaskRow, 3)->setText(
+                    recoveryFailed
+                        ? QStringLiteral("事务恢复失败")
+                        : cancelled ? QStringLiteral("用户取消")
+                                    : QStringLiteral("退出码 %1").arg(exitCode));
+              }
             }
-            appendTaskEvent(QStringLiteral("任务%1：%2").arg(succeeded ? QStringLiteral("完成") : QStringLiteral("失败"), taskName));
+
+            const QString outcome = effectiveSucceeded ? QStringLiteral("完成")
+                                    : cancelled ? QStringLiteral("取消")
+                                                : QStringLiteral("失败");
+            appendTaskEvent(QStringLiteral("任务%1：%2").arg(outcome, taskName));
             mActiveTaskRow = -1;
+            mActiveWorkerState.clear();
             rebuildProjectTree();
             updateInspector();
+            if (mClosePending) {
+              QTimer::singleShot(0, this, &QWidget::close);
+            }
           });
   connect(mViewport, &NativeViewport::frameTimeChanged, this, [this](const double milliseconds) {
     if (!mWorkspace.scenePath().isEmpty()) {
@@ -834,7 +1076,8 @@ void MainWindow::applyUiScale(const int scalePercent, const bool persist) {
 }
 
 void MainWindow::updateEditActions() {
-  const bool interactive = mSceneReady && !mSelectionBusy;
+  const bool interactive = mSceneReady && !mSelectionBusy && !mRecoveryBlocked &&
+                           !mProcessSupervisor.isRunning();
   if (mInspectAction == nullptr) {
     return;
   }
@@ -896,6 +1139,9 @@ bool MainWindow::confirmDiscardSceneEdits() {
 }
 
 bool MainWindow::saveProject(const bool forceChoosePath) {
+  if (!ensureProjectRecoveryReady()) {
+    return false;
+  }
   if (!mWorkspace.hasProject()) {
     return false;
   }
@@ -920,6 +1166,9 @@ bool MainWindow::saveProject(const bool forceChoosePath) {
 }
 
 bool MainWindow::exportCroppedScene() {
+  if (!ensureProjectRecoveryReady()) {
+    return false;
+  }
   const QString sourcePath = mWorkspace.scenePath();
   if (sourcePath.isEmpty()) {
     return false;
@@ -952,7 +1201,233 @@ bool MainWindow::exportCroppedScene() {
   return true;
 }
 
+bool MainWindow::ensureProjectRecoveryReady() {
+  if (!mRecoveryBlocked) {
+    return true;
+  }
+  QMessageBox::warning(
+      this, QStringLiteral("导入恢复待处理"),
+      QStringLiteral("工程中的未完成导入事务尚未安全恢复，因此保存、导入、重建、训练和"
+                     "场景编辑暂时禁用。请修复 Python/worker 环境后重新打开工程。"));
+  return false;
+}
+
+bool MainWindow::recoverDatasetImport(const PendingDatasetImport &pending,
+                                       QString *errorMessage,
+                                       bool *committed,
+                                       QStringList *committedPaths) {
+  if (errorMessage != nullptr) {
+    errorMessage->clear();
+  }
+  if (committed != nullptr) {
+    *committed = false;
+  }
+  if (committedPaths != nullptr) {
+    committedPaths->clear();
+  }
+
+  QProcess recovery;
+  recovery.setProcessChannelMode(QProcess::MergedChannels);
+  recovery.setWorkingDirectory(pending.workingDirectory);
+  recovery.setProcessEnvironment(pythonProcessEnvironment(pending.python));
+  recovery.start(
+      pending.python,
+      {pending.workerScript, QStringLiteral("--task"),
+       pending.recoveryTask, QStringLiteral("--config"),
+       pending.configurationPath},
+      QIODevice::ReadOnly);
+  if (!recovery.waitForStarted(5000)) {
+    if (errorMessage != nullptr) {
+      *errorMessage = QStringLiteral("无法启动导入恢复进程：%1")
+                          .arg(recovery.errorString());
+    }
+    return false;
+  }
+  if (!recovery.waitForFinished(30000)) {
+    recovery.kill();
+    recovery.waitForFinished(2000);
+    if (errorMessage != nullptr) {
+      *errorMessage = QStringLiteral("导入恢复超时；另一个软件实例可能仍在处理同名数据集。");
+    }
+    return false;
+  }
+
+  const QString output = QString::fromUtf8(recovery.readAllStandardOutput());
+  if (!output.trimmed().isEmpty()) {
+    appendLog(output.endsWith(QLatin1Char('\n')) ? output : output + QLatin1Char('\n'));
+  }
+  if (recovery.exitStatus() == QProcess::NormalExit && recovery.exitCode() == 0) {
+    static const QString recoveryPrefix = QStringLiteral("[worker-recovery]");
+    bool receivedRecoveryReport = false;
+    const QStringList lines = output.split(QRegularExpression(QStringLiteral("[\\r\\n]+")),
+                                           Qt::SkipEmptyParts);
+    for (const QString &rawLine : lines) {
+      const QString line = rawLine.trimmed();
+      if (!line.startsWith(recoveryPrefix)) {
+        continue;
+      }
+      QJsonParseError parseError;
+      const QJsonDocument event = QJsonDocument::fromJson(
+          line.mid(recoveryPrefix.size()).trimmed().toUtf8(), &parseError);
+      if (parseError.error == QJsonParseError::NoError && event.isObject() &&
+          event.object().value(QStringLiteral("version")).toInt() == 1 &&
+          event.object().value(QStringLiteral("committed")).isBool()) {
+        const QJsonObject recoveryReport = event.object();
+        receivedRecoveryReport = true;
+        if (committed != nullptr) {
+          *committed = recoveryReport.value(QStringLiteral("committed")).toBool();
+        }
+        if (committedPaths != nullptr &&
+            recoveryReport.value(QStringLiteral("committedPaths")).isArray()) {
+          for (const QJsonValue &value :
+               recoveryReport.value(QStringLiteral("committedPaths")).toArray()) {
+            if (value.isString() && !value.toString().trimmed().isEmpty()) {
+              committedPaths->append(comparablePath(value.toString()));
+            }
+          }
+          committedPaths->removeDuplicates();
+        }
+      }
+    }
+    if (receivedRecoveryReport) {
+      return true;
+    }
+    if (errorMessage != nullptr) {
+      *errorMessage = QStringLiteral(
+          "导入恢复进程已退出，但未返回有效的事务状态报告；worker 版本可能不兼容。");
+    }
+    return false;
+  }
+
+  if (errorMessage != nullptr) {
+    const QString detail = output.trimmed();
+    *errorMessage = detail.isEmpty()
+                        ? QStringLiteral("导入恢复失败，退出码 %1。")
+                              .arg(recovery.exitCode())
+                        : QStringLiteral("导入恢复失败：%1").arg(detail);
+  }
+  return false;
+}
+
+bool MainWindow::recoverInterruptedProjectImports(QString *errorMessage) {
+  if (errorMessage != nullptr) {
+    errorMessage->clear();
+  }
+
+  const QString projectRoot = comparablePath(mWorkspace.rootPath());
+  const QString datasetRoot = QDir(projectRoot).filePath(QStringLiteral("datasets"));
+  if (!hasImportRecoveryArtifacts(datasetRoot)) {
+    return true;
+  }
+
+  const QString repositoryRoot = BackendLocator::findRepositoryRoot(
+      QCoreApplication::applicationDirPath(), qEnvironmentVariable("GSW_BACKEND_ROOT"));
+  const QString workerScript =
+      QDir(repositoryRoot).filePath(QStringLiteral("native/worker/gsw_worker.py"));
+  const QString python = findTrainingPython(repositoryRoot);
+  if (repositoryRoot.isEmpty() || !QFileInfo::exists(workerScript) || python.isEmpty()) {
+    if (errorMessage != nullptr) {
+      *errorMessage = QStringLiteral("检测到未完成的导入事务，但未找到受信任的原生 worker "
+                                     "或 Python 环境。请从完整安装目录运行，或显式设置 "
+                                     "GSW_BACKEND_ROOT。");
+    }
+    return false;
+  }
+
+  QTemporaryFile configuration(
+      QDir(QDir::tempPath()).filePath(QStringLiteral("gsw-project-recovery-XXXXXX.json")));
+  configuration.setAutoRemove(true);
+  if (!configuration.open()) {
+    if (errorMessage != nullptr) {
+      *errorMessage = QStringLiteral("无法创建工程导入恢复配置：%1")
+                          .arg(configuration.errorString());
+    }
+    return false;
+  }
+
+  QJsonObject workerConfig;
+  workerConfig.insert(QStringLiteral("task"), QStringLiteral("import-project-recovery"));
+  workerConfig.insert(QStringLiteral("projectRoot"), projectRoot);
+  workerConfig.insert(QStringLiteral("datasetRoot"), QDir::cleanPath(datasetRoot));
+  const QByteArray payload = QJsonDocument(workerConfig).toJson(QJsonDocument::Compact);
+  if (configuration.write(payload) != payload.size() || !configuration.flush()) {
+    if (errorMessage != nullptr) {
+      *errorMessage = QStringLiteral("无法写入工程导入恢复配置：%1")
+                          .arg(configuration.errorString());
+    }
+    return false;
+  }
+  configuration.close();
+
+  const PendingDatasetImport pending{
+      QStringLiteral("工程导入事务恢复"),
+      datasetRoot,
+      projectRoot,
+      configuration.fileName(),
+      python,
+      workerScript,
+      repositoryRoot,
+      QStringLiteral("import-project-recovery")};
+  bool committed = false;
+  QStringList committedPaths;
+  if (!recoverDatasetImport(pending, errorMessage, &committed, &committedPaths)) {
+    return false;
+  }
+
+  QString reloadError;
+  if (!mWorkspace.load(mWorkspace.projectFilePath(), &reloadError)) {
+    if (errorMessage != nullptr) {
+      *errorMessage = QStringLiteral("导入事务已恢复，但无法重新载入工程：%1")
+                          .arg(reloadError);
+    }
+    return false;
+  }
+
+  if (committed && committedPaths.isEmpty()) {
+    appendTaskEvent(
+        QStringLiteral("检测到已提交的数据集，但恢复报告未包含路径；请使用“关联已有数据集”确认结果。"));
+  } else if (committedPaths.size() == 1) {
+    const QString recoveredDataset = comparablePath(committedPaths.constFirst());
+    const QFileInfo recoveredInfo(recoveredDataset);
+    const bool trustedLocation =
+        recoveredInfo.isDir() &&
+        pathsReferToSameLocation(recoveredInfo.absolutePath(), datasetRoot);
+    const qint64 imageCount = trustedLocation
+                                  ? WorkspaceDocument::countDatasetImages(recoveredDataset)
+                                  : 0;
+    QString attachError;
+    if (trustedLocation && imageCount > 0 &&
+        mWorkspace.setDatasetPath(recoveredDataset, &attachError)) {
+      QString saveError;
+      if (!mWorkspace.save({}, &saveError)) {
+        appendTaskEvent(
+            QStringLiteral("已恢复并关联数据集，但工程自动保存失败：%1").arg(saveError));
+      }
+      appendTaskEvent(
+          QStringLiteral("已自动关联崩溃前完成提交的数据集：%1（%2 张图像）")
+              .arg(QDir::toNativeSeparators(recoveredDataset))
+              .arg(imageCount));
+    } else {
+      appendTaskEvent(
+          QStringLiteral("已保留提交完成的数据集，但无法自动关联：%1%2")
+              .arg(QDir::toNativeSeparators(recoveredDataset),
+                   attachError.isEmpty() ? QString() : QStringLiteral("（%1）").arg(attachError)));
+    }
+  } else if (committedPaths.size() > 1) {
+    appendTaskEvent(
+        QStringLiteral("已恢复 %1 个提交完成的数据集；为避免误选，请使用“关联已有数据集”选择当前数据集。")
+            .arg(committedPaths.size()));
+  }
+  appendTaskEvent(QStringLiteral("已恢复工程中断的导入事务，并重新载入数据集状态。"));
+  return true;
+}
+
 void MainWindow::newProject() {
+  if (mProcessSupervisor.isRunning()) {
+    QMessageBox::information(this, QStringLiteral("任务仍在运行"),
+                             QStringLiteral("请先停止或等待当前任务结束，再新建工程。"));
+    return;
+  }
   if (!confirmDiscardChanges()) {
     return;
   }
@@ -965,28 +1440,187 @@ void MainWindow::newProject() {
     showError(QStringLiteral("无法创建工程"), error);
     return;
   }
+  mRecoveryBlocked = false;
+  updateWorkspaceUi();
   saveProject(false);
 }
 
 void MainWindow::importDataset() {
+  if (!ensureProjectRecoveryReady()) {
+    return;
+  }
   if (!mWorkspace.hasProject()) {
     QMessageBox::information(this, QStringLiteral("请先创建工程"), QStringLiteral("导入数据前需要创建或打开工程。"));
     return;
   }
+  if (mProcessSupervisor.isRunning()) {
+    QMessageBox::information(this, QStringLiteral("任务繁忙"),
+                             QStringLiteral("请等待当前任务结束后再导入媒体。"));
+    return;
+  }
+
+  const QString root = BackendLocator::findRepositoryRoot(
+      QCoreApplication::applicationDirPath(), qEnvironmentVariable("GSW_BACKEND_ROOT"));
+  const QString workerScript = QDir(root).filePath(QStringLiteral("native/worker/gsw_worker.py"));
+  const QString python = findTrainingPython(root);
+  if (root.isEmpty() || !QFileInfo::exists(workerScript) || python.isEmpty()) {
+    showError(QStringLiteral("导入后端不可用"),
+              QStringLiteral("未找到受信任的原生 worker 或 Python 环境。请从完整安装目录运行，"
+                             "或显式设置 GSW_BACKEND_ROOT。"));
+    return;
+  }
+
+  DatasetImportDialog dialog(mWorkspace.rootPath(),
+                             safeSceneName(mWorkspace.projectName()), this);
+  if (dialog.exec() != QDialog::Accepted) {
+    return;
+  }
+
+  const std::optional<DatasetImportPlan> &validatedPlan = dialog.validatedPlan();
+  if (!validatedPlan.has_value()) {
+    showError(QStringLiteral("无法准备媒体导入"),
+              QStringLiteral("导入对话框未生成有效的媒体计划。"));
+    return;
+  }
+  const DatasetImportPlan &plan = *validatedPlan;
+  const DatasetImportRequest request = dialog.request();
+  QString error;
+
+  statusBar()->showMessage(QStringLiteral("正在预检媒体导入环境…"));
+  QApplication::setOverrideCursor(Qt::WaitCursor);
+  const ImportEnvironmentProbeResult preflight = ImportEnvironmentProbe::run(
+      python, root, plan.videoCount() > 0, pythonProcessEnvironment(python));
+  QApplication::restoreOverrideCursor();
+  statusBar()->clearMessage();
+  if (!preflight.ready) {
+    showError(QStringLiteral("媒体导入环境不可用"),
+              QStringLiteral("所选 Python：%1\n\n%2")
+                  .arg(preflight.python, preflight.errorMessage));
+    return;
+  }
+  appendTaskEvent(
+      preflight.videoBackend.isEmpty()
+          ? QStringLiteral("媒体导入环境预检通过：%1").arg(preflight.python)
+          : QStringLiteral("媒体导入环境预检通过：%1（视频后端：%2）")
+                .arg(preflight.python, preflight.videoBackend));
+
+  const QString projectRoot = comparablePath(mWorkspace.rootPath());
+  const QString datasetRoot = QDir(projectRoot).filePath(QStringLiteral("datasets"));
+  const QString managedDatasetPath = plan.managedDatasetPath(datasetRoot);
+  const QString jobsDirectory = QDir(projectRoot).filePath(QStringLiteral(".gsw/jobs"));
+  const QString configurationPath = QDir(jobsDirectory).filePath(
+      QStringLiteral("import-%1.json")
+          .arg(QUuid::createUuid().toString(QUuid::WithoutBraces)));
+  if (!plan.writeWorkerConfiguration(configurationPath, root, datasetRoot, &error)) {
+    showError(QStringLiteral("无法保存导入任务"), error);
+    return;
+  }
+
+  const qsizetype mediaCount = plan.imageCount() + plan.videoCount();
+  const QString taskName = QStringLiteral("媒体导入 | %1 | %2 项")
+                               .arg(plan.sceneName())
+                               .arg(mediaCount);
+  const PendingDatasetImport pending{
+      taskName, managedDatasetPath, projectRoot, configurationPath,
+      python, workerScript, root, QStringLiteral("import-recovery")};
+
+  statusBar()->showMessage(QStringLiteral("正在检查上次导入事务…"));
+  QApplication::setOverrideCursor(Qt::WaitCursor);
+  const bool recovered = recoverDatasetImport(pending, &error);
+  QApplication::restoreOverrideCursor();
+  statusBar()->clearMessage();
+  if (!recovered) {
+    showError(QStringLiteral("无法恢复导入事务"), error);
+    return;
+  }
+
+  if (QFileInfo::exists(managedDatasetPath) && !request.overwrite) {
+    QFile::remove(configurationPath);
+    QMessageBox::information(
+        this, QStringLiteral("数据集已存在"),
+        QStringLiteral("目标数据集已存在：\n%1\n\n请启用“覆盖同名托管数据集”后重试。")
+            .arg(QDir::toNativeSeparators(managedDatasetPath)));
+    return;
+  }
+  if (QFileInfo::exists(managedDatasetPath) && request.overwrite) {
+    const QMessageBox::StandardButton answer = QMessageBox::warning(
+        this, QStringLiteral("确认覆盖托管数据集"),
+        QStringLiteral("导入成功后将分阶段替换以下数据集；最终提交前的失败或中断会恢复旧数据，"
+                       "提交完成后会保留新数据：\n%1")
+            .arg(QDir::toNativeSeparators(managedDatasetPath)),
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    if (answer != QMessageBox::Yes) {
+      QFile::remove(configurationPath);
+      return;
+    }
+  }
+
+  mPendingDatasetImport = pending;
+  const bool started = mProcessSupervisor.start(
+      taskName, python,
+      {workerScript, QStringLiteral("--task"), QStringLiteral("import"),
+       QStringLiteral("--config"), configurationPath},
+      root, pythonProcessEnvironment(python), false);
+  if (!started) {
+    mPendingDatasetImport.reset();
+    QFile::remove(configurationPath);
+    QMessageBox::information(this, QStringLiteral("任务繁忙"),
+                             QStringLiteral("请等待当前任务结束后再试。"));
+    return;
+  }
+
+  appendTaskEvent(QStringLiteral("导入配置已保存：%1")
+                      .arg(QDir::toNativeSeparators(configurationPath)));
+}
+
+void MainWindow::attachExistingDataset() {
+  if (!ensureProjectRecoveryReady()) {
+    return;
+  }
+  if (!mWorkspace.hasProject()) {
+    QMessageBox::information(
+        this, QStringLiteral("请先创建工程"),
+        QStringLiteral("关联已有数据集前需要创建或打开工程。"));
+    return;
+  }
+  if (mProcessSupervisor.isRunning()) {
+    QMessageBox::information(this, QStringLiteral("任务繁忙"),
+                             QStringLiteral("请等待当前任务结束后再关联数据集。"));
+    return;
+  }
+
+  const QString initialDirectory = mWorkspace.datasetPath().isEmpty()
+                                       ? mWorkspace.rootPath()
+                                       : mWorkspace.datasetPath();
   const QString directory = QFileDialog::getExistingDirectory(
-      this, QStringLiteral("选择图像数据集"), mWorkspace.rootPath());
+      this, QStringLiteral("关联已有图像 / COLMAP 数据集"), initialDirectory,
+      QFileDialog::ShowDirsOnly);
   if (directory.isEmpty()) {
     return;
   }
-  QString error;
-  if (!mWorkspace.setDatasetPath(directory, &error)) {
-    showError(QStringLiteral("无法导入数据集"), error);
+
+  const qint64 imageCount = WorkspaceDocument::countDatasetImages(directory);
+  if (imageCount <= 0) {
+    showError(QStringLiteral("数据集没有可用图像"),
+              QStringLiteral("未在所选目录或其 images/input 子目录中找到支持的图像。"));
     return;
   }
-  appendTaskEvent(QStringLiteral("已导入数据集：%1 张图像").arg(mWorkspace.imageCount()));
+
+  QString error;
+  if (!mWorkspace.setDatasetPath(directory, &error)) {
+    showError(QStringLiteral("无法关联数据集"), error);
+    return;
+  }
+  appendTaskEvent(
+      QStringLiteral("已关联现有数据集：%1（%2 张图像，原目录与 COLMAP 数据保持不变）")
+          .arg(QDir::toNativeSeparators(directory))
+          .arg(imageCount));
 }
 
 void MainWindow::importScene() {
+  if (!ensureProjectRecoveryReady()) {
+    return;
+  }
   if (!mWorkspace.hasProject()) {
     QMessageBox::information(this, QStringLiteral("请先创建工程"), QStringLiteral("导入场景前需要创建或打开工程。"));
     return;
@@ -1011,7 +1645,8 @@ void MainWindow::importScene() {
 }
 
 void MainWindow::runEnvironmentCheck() {
-  const QString root = findRepositoryRoot();
+  const QString root = BackendLocator::findRepositoryRoot(
+      QCoreApplication::applicationDirPath(), qEnvironmentVariable("GSW_BACKEND_ROOT"));
   const QString script = QDir(root).filePath(QStringLiteral("scripts/check_3dgs_env.ps1"));
   if (root.isEmpty() || !QFileInfo::exists(script)) {
     showError(QStringLiteral("找不到环境检查脚本"), QStringLiteral("请从完整源码目录运行原生应用。"));
@@ -1028,13 +1663,17 @@ void MainWindow::runEnvironmentCheck() {
 }
 
 void MainWindow::startReconstruction() {
+  if (!ensureProjectRecoveryReady()) {
+    return;
+  }
   if (mWorkspace.datasetPath().isEmpty()) {
     QMessageBox::information(
         this, QStringLiteral("尚未导入数据集"),
         QStringLiteral("请先导入包含照片的图像数据集。"));
     return;
   }
-  const QString root = findRepositoryRoot();
+  const QString root = BackendLocator::findRepositoryRoot(
+      QCoreApplication::applicationDirPath(), qEnvironmentVariable("GSW_BACKEND_ROOT"));
   const QString workerScript =
       QDir(root).filePath(QStringLiteral("native/worker/gsw_worker.py"));
   const QString python = findTrainingPython(root);
@@ -1117,11 +1756,15 @@ void MainWindow::startReconstruction() {
 }
 
 void MainWindow::startTraining() {
+  if (!ensureProjectRecoveryReady()) {
+    return;
+  }
   if (mWorkspace.datasetPath().isEmpty()) {
     QMessageBox::information(this, QStringLiteral("尚未导入数据集"), QStringLiteral("请先导入包含 COLMAP 数据的图像工程。"));
     return;
   }
-  const QString root = findRepositoryRoot();
+  const QString root = BackendLocator::findRepositoryRoot(
+      QCoreApplication::applicationDirPath(), qEnvironmentVariable("GSW_BACKEND_ROOT"));
   const QString workerScript = QDir(root).filePath(QStringLiteral("native/worker/gsw_worker.py"));
   const QString python = findTrainingPython(root);
   if (root.isEmpty() || !QFileInfo::exists(workerScript) || python.isEmpty()) {
@@ -1192,15 +1835,21 @@ void MainWindow::updateWorkspaceUi() {
   const QString projectName = mWorkspace.hasProject() ? mWorkspace.projectName() : QStringLiteral("未打开工程");
   mViewport->setProjectLabel(projectName);
   mViewport->setScene(mWorkspace.scenePath(), mWorkspace.sceneMetadata().vertexCount);
-  mProjectStatus->setText(projectName + (mWorkspace.isModified() ? QStringLiteral(" *") : QString()));
+  mProjectStatus->setText(
+      projectName + (mWorkspace.isModified() ? QStringLiteral(" *") : QString()) +
+      (mRecoveryBlocked ? QStringLiteral(" · 导入恢复待处理") : QString()));
   setWindowTitle(QStringLiteral("Gaussian Scene Workbench - %1[*]").arg(projectName));
-  mSaveAction->setEnabled(mWorkspace.hasProject());
-  mImportDatasetAction->setEnabled(mWorkspace.hasProject());
-  mImportSceneAction->setEnabled(mWorkspace.hasProject());
-  mReconstructAction->setEnabled(!mProcessSupervisor.isRunning() &&
-                                 mWorkspace.hasProject() &&
+  const bool running = mProcessSupervisor.isRunning();
+  const bool workspaceReady = mWorkspace.hasProject() && !mRecoveryBlocked;
+  mSaveAction->setEnabled(workspaceReady && !running);
+  mNewProjectAction->setEnabled(!running);
+  mOpenProjectAction->setEnabled(!running);
+  mImportDatasetAction->setEnabled(workspaceReady && !running);
+  mAttachDatasetAction->setEnabled(workspaceReady && !running);
+  mImportSceneAction->setEnabled(workspaceReady && !running);
+  mReconstructAction->setEnabled(!running && workspaceReady &&
                                  !mWorkspace.datasetPath().isEmpty());
-  mTrainAction->setEnabled(!mProcessSupervisor.isRunning() && mWorkspace.hasProject() &&
+  mTrainAction->setEnabled(!running && workspaceReady &&
                            !mWorkspace.datasetPath().isEmpty());
   updateEditActions();
 }
@@ -1276,44 +1925,8 @@ void MainWindow::showError(const QString &title, const QString &message) {
   appendTaskEvent(QStringLiteral("错误：%1").arg(message));
 }
 
-QString MainWindow::findRepositoryRoot() const {
-  QStringList candidates = {QCoreApplication::applicationDirPath(), QDir::currentPath(), mWorkspace.rootPath()};
-  for (QString candidate : candidates) {
-    if (candidate.isEmpty()) {
-      continue;
-    }
-    QDir directory(candidate);
-    for (int depth = 0; depth < 10; ++depth) {
-      const bool hasEnvironmentScript = QFileInfo::exists(directory.filePath(QStringLiteral("scripts/check_3dgs_env.ps1")));
-      const bool hasTrainingScript = QFileInfo::exists(directory.filePath(QStringLiteral("gaussian-splatting/train.py")));
-      if (hasEnvironmentScript && hasTrainingScript) {
-        return QDir::cleanPath(directory.absolutePath());
-      }
-      if (!directory.cdUp()) {
-        break;
-      }
-    }
-  }
-  return {};
-}
-
 QString MainWindow::findTrainingPython(const QString &repositoryRoot) const {
-  const QString configured = qEnvironmentVariable("GAUSSIAN_SPLATTING_CONDA_PREFIX");
-  QStringList candidates;
-  if (!configured.isEmpty()) {
-    candidates.append(QDir(configured).filePath(QStringLiteral("python.exe")));
-  }
-  const QString driveRoot = QDir(repositoryRoot).rootPath();
-  candidates.append(QDir(driveRoot).filePath(QStringLiteral("conda/envs/gaussian_splatting/python.exe")));
-  candidates.append(QDir(driveRoot).filePath(QStringLiteral("miniforge3/envs/gaussian_splatting/python.exe")));
-  candidates.append(QDir(QDir::homePath()).filePath(QStringLiteral("miniforge3/envs/gaussian_splatting/python.exe")));
-
-  for (const QString &candidate : candidates) {
-    if (QFileInfo::exists(candidate)) {
-      return QDir::toNativeSeparators(candidate);
-    }
-  }
-  return QStandardPaths::findExecutable(QStringLiteral("python.exe"));
+  return BackendLocator::findGaussianPython(repositoryRoot);
 }
 
 QString MainWindow::suggestedProjectFilePath() const {

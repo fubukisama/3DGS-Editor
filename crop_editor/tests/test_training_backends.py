@@ -697,7 +697,7 @@ class TrainingBackendTests(unittest.TestCase):
             (dataset / "images" / "frame.jpg").write_bytes(b"jpg")
             try:
                 def fake_convert(job, dataset_path, options):
-                    self.assertEqual(dataset_path, dataset)
+                    self.assertEqual(dataset_path, dataset.resolve())
                     self.assertEqual(options["preset"], "robust")
                     sparse0 = dataset_path / "sparse" / "0"
                     sparse0.mkdir(parents=True)
@@ -732,7 +732,7 @@ class TrainingBackendTests(unittest.TestCase):
                 self.assertEqual(job["status"], "done")
                 self.assertEqual(job["stage"], "done")
                 self.assertTrue(job["alignment"]["has_alignment"])
-                self.assertEqual(job["output_dir"], str(dataset))
+                self.assertEqual(job["output_dir"], str(dataset.resolve()))
                 self.assertTrue(any("COLMAP alignment complete" in line for line in job["log"]))
             finally:
                 server.DATASETS_DIR = original_datasets

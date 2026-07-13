@@ -22,8 +22,16 @@ qt_standard_project_setup()
 qt_add_executable(GaussianSceneWorkbench WIN32
   src/AppTheme.cpp
   src/AppTheme.h
+  src/BackendLocator.cpp
+  src/BackendLocator.h
   src/ColmapSupport.cpp
   src/ColmapSupport.h
+  src/DatasetImportDialog.cpp
+  src/DatasetImportDialog.h
+  src/DatasetImportPlan.cpp
+  src/DatasetImportPlan.h
+  src/ImportEnvironmentProbe.cpp
+  src/ImportEnvironmentProbe.h
   src/MainWindow.cpp
   src/MainWindow.h
   src/NativeViewport.cpp
@@ -77,8 +85,7 @@ install(TARGETS GaussianSceneWorkbench
 
 include(CTest)
 if(BUILD_TESTING)
-  find_package(Qt6 6.8 QUIET COMPONENTS Test)
-  if(TARGET Qt6::Test)
+  find_package(Qt6 6.8 REQUIRED COMPONENTS Test)
     qt_add_executable(gsw_native_tests
       tests/WorkspaceDocumentTests.cpp
       src/ColmapSupport.cpp
@@ -98,5 +105,59 @@ if(BUILD_TESTING)
       target_compile_options(gsw_native_tests PRIVATE /W4 /permissive- /utf-8 /Zc:__cplusplus)
     endif()
     add_test(NAME workspace_document COMMAND gsw_native_tests)
-  endif()
+
+    qt_add_executable(gsw_dataset_import_plan_tests
+      tests/DatasetImportPlanTests.cpp
+      src/DatasetImportPlan.cpp
+      src/DatasetImportPlan.h
+    )
+    target_include_directories(gsw_dataset_import_plan_tests PRIVATE src)
+    target_link_libraries(gsw_dataset_import_plan_tests PRIVATE Qt6::Core Qt6::Test)
+    if(MSVC)
+      target_compile_options(gsw_dataset_import_plan_tests PRIVATE /W4 /permissive- /utf-8 /Zc:__cplusplus)
+    endif()
+    add_test(NAME dataset_import_plan COMMAND gsw_dataset_import_plan_tests)
+
+    add_executable(gsw_process_output_fixture
+      tests/helpers/ProcessOutputFixture.cpp
+    )
+    target_link_libraries(gsw_process_output_fixture PRIVATE Qt6::Core)
+
+    qt_add_executable(gsw_process_supervisor_tests
+      tests/ProcessSupervisorTests.cpp
+      src/ProcessSupervisor.cpp
+      src/ProcessSupervisor.h
+    )
+    target_include_directories(gsw_process_supervisor_tests PRIVATE src)
+    target_link_libraries(gsw_process_supervisor_tests PRIVATE Qt6::Core Qt6::Test)
+    add_dependencies(gsw_process_supervisor_tests gsw_process_output_fixture)
+    if(MSVC)
+      target_compile_options(gsw_process_output_fixture PRIVATE /W4 /permissive- /utf-8 /Zc:__cplusplus)
+      target_compile_options(gsw_process_supervisor_tests PRIVATE /W4 /permissive- /utf-8 /Zc:__cplusplus)
+    endif()
+    add_test(NAME process_supervisor COMMAND gsw_process_supervisor_tests)
+
+    qt_add_executable(gsw_workspace_scene_format_tests
+      tests/WorkspaceSceneFormatTests.cpp
+      src/WorkspaceDocument.cpp
+      src/WorkspaceDocument.h
+    )
+    target_include_directories(gsw_workspace_scene_format_tests PRIVATE src)
+    target_link_libraries(gsw_workspace_scene_format_tests PRIVATE Qt6::Core Qt6::Test)
+    if(MSVC)
+      target_compile_options(gsw_workspace_scene_format_tests PRIVATE /W4 /permissive- /utf-8 /Zc:__cplusplus)
+    endif()
+    add_test(NAME workspace_scene_format COMMAND gsw_workspace_scene_format_tests)
+
+    qt_add_executable(gsw_backend_locator_tests
+      tests/BackendLocatorTests.cpp
+      src/BackendLocator.cpp
+      src/BackendLocator.h
+    )
+    target_include_directories(gsw_backend_locator_tests PRIVATE src)
+    target_link_libraries(gsw_backend_locator_tests PRIVATE Qt6::Core Qt6::Test)
+    if(MSVC)
+      target_compile_options(gsw_backend_locator_tests PRIVATE /W4 /permissive- /utf-8 /Zc:__cplusplus)
+    endif()
+    add_test(NAME backend_locator COMMAND gsw_backend_locator_tests)
 endif()

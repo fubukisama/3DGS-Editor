@@ -5,6 +5,9 @@
 #include "WorkspaceDocument.h"
 
 #include <QMainWindow>
+#include <QStringList>
+
+#include <optional>
 
 class QAction;
 class QActionGroup;
@@ -29,6 +32,17 @@ protected:
   void closeEvent(QCloseEvent *event) override;
 
 private:
+  struct PendingDatasetImport {
+    QString taskName;
+    QString datasetPath;
+    QString projectRoot;
+    QString configurationPath;
+    QString python;
+    QString workerScript;
+    QString workingDirectory;
+    QString recoveryTask;
+  };
+
   void createActions();
   void createMenus();
   void createToolBars();
@@ -47,8 +61,15 @@ private:
   bool confirmDiscardSceneEdits();
   bool saveProject(bool forceChoosePath = false);
   bool exportCroppedScene();
+  bool ensureProjectRecoveryReady();
+  bool recoverDatasetImport(const PendingDatasetImport &pending,
+                            QString *errorMessage = nullptr,
+                            bool *committed = nullptr,
+                            QStringList *committedPaths = nullptr);
+  bool recoverInterruptedProjectImports(QString *errorMessage = nullptr);
   void newProject();
   void importDataset();
+  void attachExistingDataset();
   void importScene();
   void runEnvironmentCheck();
   void startReconstruction();
@@ -60,7 +81,6 @@ private:
   void appendTaskEvent(const QString &text);
   void showError(const QString &title, const QString &message);
 
-  [[nodiscard]] QString findRepositoryRoot() const;
   [[nodiscard]] QString findTrainingPython(const QString &repositoryRoot) const;
   [[nodiscard]] QString suggestedProjectFilePath() const;
 
@@ -86,8 +106,11 @@ private:
   QLabel *mEditStatus = nullptr;
   QLabel *mScaleStatus = nullptr;
 
+  QAction *mNewProjectAction = nullptr;
+  QAction *mOpenProjectAction = nullptr;
   QAction *mSaveAction = nullptr;
   QAction *mImportDatasetAction = nullptr;
+  QAction *mAttachDatasetAction = nullptr;
   QAction *mImportSceneAction = nullptr;
   QAction *mReconstructAction = nullptr;
   QAction *mTrainAction = nullptr;
@@ -112,12 +135,16 @@ private:
 
   int mUiScalePercent = 90;
   int mActiveTaskRow = -1;
+  std::optional<PendingDatasetImport> mPendingDatasetImport;
+  QString mActiveWorkerState;
   qsizetype mSelectedPointCount = 0;
   qsizetype mDeletedPointCount = 0;
   bool mSceneReady = false;
   bool mSelectionBusy = false;
   bool mCanUndoEdit = false;
   bool mCanRedoEdit = false;
+  bool mClosePending = false;
+  bool mRecoveryBlocked = false;
   NativeViewport::RenderMode mRenderMode = NativeViewport::RenderMode::Points;
 };
 

@@ -2,7 +2,6 @@
 
 #include <QDateTime>
 #include <QDir>
-#include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
@@ -21,6 +20,23 @@ void assignError(QString *target, const QString &message) {
   if (target != nullptr) {
     *target = message;
   }
+}
+
+qint64 countImageFiles(const QString &rootPath) {
+  static const QSet<QString> extensions = {
+      QStringLiteral("jpg"), QStringLiteral("jpeg"), QStringLiteral("png"),
+      QStringLiteral("tif"), QStringLiteral("tiff"), QStringLiteral("bmp"),
+      QStringLiteral("webp"), QStringLiteral("exr")};
+
+  qint64 count = 0;
+  const QFileInfoList files =
+      QDir(rootPath).entryInfoList(QDir::Files | QDir::NoSymLinks);
+  for (const QFileInfo &info : files) {
+    if (extensions.contains(info.suffix().toLower())) {
+      ++count;
+    }
+  }
+  return count;
 }
 } // namespace
 
@@ -235,6 +251,11 @@ PlyMetadata WorkspaceDocument::inspectPly(const QString &filePath, QString *erro
     assignError(errorMessage, tr("The PLY header is incomplete or unsupported."));
     return metadata;
   }
+  if (metadata.format != QStringLiteral("ascii") &&
+      metadata.format != QStringLiteral("binary_little_endian")) {
+    assignError(errorMessage, tr("Unsupported PLY format: %1").arg(metadata.format));
+    return metadata;
+  }
   metadata.valid = true;
   return metadata;
 }
@@ -244,20 +265,19 @@ qint64 WorkspaceDocument::countDatasetImages(const QString &directoryPath) {
     return 0;
   }
 
-  static const QSet<QString> extensions = {
-      QStringLiteral("jpg"), QStringLiteral("jpeg"), QStringLiteral("png"),
-      QStringLiteral("tif"), QStringLiteral("tiff"), QStringLiteral("bmp"),
-      QStringLiteral("webp"), QStringLiteral("exr")};
-
-  qint64 count = 0;
-  QDirIterator iterator(directoryPath, QDir::Files | QDir::NoSymLinks, QDirIterator::Subdirectories);
-  while (iterator.hasNext()) {
-    const QFileInfo info(iterator.next());
-    if (extensions.contains(info.suffix().toLower())) {
-      ++count;
+  const QDir datasetRoot(directoryPath);
+  for (const QString &standardDirectory :
+       {QStringLiteral("input"), QStringLiteral("images")}) {
+    const QString candidate = datasetRoot.filePath(standardDirectory);
+    if (QFileInfo(candidate).isDir()) {
+      const qint64 count = countImageFiles(candidate);
+      if (count > 0) {
+        return count;
+      }
     }
   }
-  return count;
+
+  return countImageFiles(directoryPath);
 }
 
 void WorkspaceDocument::setModified(const bool modified) {

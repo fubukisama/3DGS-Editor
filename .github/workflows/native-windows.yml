@@ -7,6 +7,7 @@ on:
     paths:
       - "native/**"
       - "crop_editor/server.py"
+      - "crop_editor/video_extract.py"
       - "crop_editor/tests/test_training_backends.py"
       - "gaussian-splatting/**"
       - "training_kit/**"
@@ -21,6 +22,7 @@ on:
     paths:
       - "native/**"
       - "crop_editor/server.py"
+      - "crop_editor/video_extract.py"
       - "crop_editor/tests/test_training_backends.py"
       - "gaussian-splatting/**"
       - "training_kit/**"
@@ -69,11 +71,11 @@ jobs:
 
       - name: Test
         shell: pwsh
-        run: ctest --test-dir native/build-ci -C Release --output-on-failure
+        run: ctest --test-dir native/build-ci -C Release --no-tests=error --output-on-failure
 
       - name: Test native worker
         shell: pwsh
-        run: python -m unittest native.worker.test_gsw_worker
+        run: python -B -m unittest native.worker.test_gsw_worker native.worker.test_import_preflight
 
       - name: Install application
         shell: pwsh
@@ -101,6 +103,7 @@ jobs:
       - name: Verify native-only package
         shell: pwsh
         run: |
+          python -B -c "from pathlib import Path; files=[Path('native/artifact/native/worker/gsw_worker.py'),Path('native/artifact/native/worker/import_preflight.py'),Path('native/artifact/crop_editor/server.py'),Path('native/artifact/crop_editor/video_extract.py')]; [compile(path.read_bytes(),str(path),'exec') for path in files]"
           $forbidden = Get-ChildItem native/artifact -Recurse -File | Where-Object {
             $_.Name -match '^(node|electron)\.exe$' -or
             $_.Name -match '^Qt6WebEngine' -or
@@ -116,7 +119,10 @@ jobs:
           }
           $requiredBackend = @(
             "native/artifact/native/worker/gsw_worker.py",
+            "native/artifact/native/worker/import_preflight.py",
             "native/artifact/crop_editor/server.py",
+            "native/artifact/crop_editor/video_extract.py",
+            "native/artifact/scripts/check_3dgs_env.ps1",
             "native/artifact/gaussian-splatting/train.py",
             "native/artifact/training_kit/apply_local_fixes.bat",
             "native/artifact/backend_manifest.json"

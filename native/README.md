@@ -7,7 +7,7 @@
 - Native Qt Widgets application with a GPU-backed OpenGL viewport.
 - Dockable project tree, inspector, task queue, and process log.
 - Portable `.gsw.json` project files with relative asset paths.
-- Dataset folder import plus asynchronous ASCII/binary PLY point-cloud loading.
+- Managed photo/video import with recursive discovery, metadata manifest, frame extraction, structured progress, and crash-safe journaled publish/recovery (including project reopen); existing image/COLMAP datasets can also be linked in place.
 - Native COLMAP reconstruction dialog with standard, robust, and sequential presets, explicit E-drive executable selection, cache overwrite protection, live logs, cancellation, and sparse-model validation.
 - Native OpenGL point rendering plus depth-sorted screen-space Gaussian splats using activated scale, normalized rotation, sigmoid opacity, and SH-DC color.
 - Automatic Gaussian/point mode selection, deterministic large-scene sampling, scene-bounds camera fitting, and a manual diagnostic fallback.
@@ -26,14 +26,15 @@ COLMAP is an external native dependency and is never assumed to live on the syst
 
 Feature parity and release gates are tracked in `docs/NATIVE_PARITY.md` (packaged as `NATIVE_PARITY.md`).
 
-The Windows preview package includes the native worker and compute source needed to launch training. A compatible external Conda/CUDA environment is still required and may be located outside the system drive.
+The Windows preview package includes the native worker and compute source needed to launch training. A compatible external Conda/CUDA environment is still required and may be located outside the system drive. Before managed media import starts, the desktop probes the exact selected Python against the packaged `crop_editor/server.py` and requires `numpy` plus `plyfile`. Video import additionally requires at least one verified extraction route: FFmpeg, OpenCV in that Python, or the existing `gaussian_splatting` Conda `video_extract.py` fallback.
+
+Python discovery prefers `GAUSSIAN_SPLATTING_CONDA_PREFIX`, then `GS_CONDA_PREFIX`, an active `gaussian_splatting` Conda environment, and conventional Miniforge/Conda/Anaconda environment locations on the install drive or in the user profile. An arbitrary `python.exe` on `PATH` is not accepted as a Gaussian environment.
+
+The desktop application only auto-discovers a backend beside its executable. Source-tree development can explicitly select another trusted checkout with `GSW_BACKEND_ROOT`; the current working directory is never treated as a backend implicitly.
 
 ## Local Windows build
 
-The default toolchain is installed outside the system drive:
-
-- Qt/CMake/Ninja: `E:\conda\envs\gsw_native`
-- Visual Studio C++ tools: discovered automatically, including `E:\vsi`
+The build script discovers Qt/CMake/Ninja from `GSW_NATIVE_QT_ROOT`, the active Conda environment, common Miniforge/Miniconda locations, and the repository drive. Visual Studio 2022 C++ Build Tools are discovered automatically. Python 3.10 or newer is required for the worker test and staged-source syntax gates; these checks run for normal builds and `-Package` builds.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\build_native.ps1
