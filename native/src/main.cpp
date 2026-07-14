@@ -13,7 +13,41 @@
 #include <QSurfaceFormat>
 #include <QTimer>
 
+#ifdef _WIN32
+#include <shobjidl.h>
+
+#include <cwchar>
+
+#define GSW_WIDEN_IMPL(value) L##value
+#define GSW_WIDEN(value) GSW_WIDEN_IMPL(value)
+
+namespace {
+bool configureWindowsApplicationIdentity() {
+  constexpr const wchar_t *expectedId = GSW_WIDEN(GSW_APP_USER_MODEL_ID);
+  if (FAILED(SetCurrentProcessExplicitAppUserModelID(expectedId))) {
+    return false;
+  }
+
+  PWSTR actualId = nullptr;
+  const HRESULT result = GetCurrentProcessExplicitAppUserModelID(&actualId);
+  const bool matches = SUCCEEDED(result) && actualId != nullptr &&
+                       std::wcscmp(actualId, expectedId) == 0;
+  CoTaskMemFree(actualId);
+  return matches;
+}
+} // namespace
+
+#undef GSW_WIDEN
+#undef GSW_WIDEN_IMPL
+#endif
+
 int main(int argc, char *argv[]) {
+#ifdef _WIN32
+  if (!configureWindowsApplicationIdentity()) {
+    return 4;
+  }
+#endif
+
   QGuiApplication::setHighDpiScaleFactorRoundingPolicy(Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
 
   QSurfaceFormat format;
@@ -29,6 +63,7 @@ int main(int argc, char *argv[]) {
   QCoreApplication::setOrganizationName(QStringLiteral("GaussianSceneWorkbench"));
   QCoreApplication::setOrganizationDomain(QStringLiteral("github.com/fubukisama"));
   QCoreApplication::setApplicationName(QStringLiteral("Gaussian Scene Workbench"));
+  QGuiApplication::setApplicationDisplayName(QStringLiteral("Gaussian Scene Workbench Native"));
   QCoreApplication::setApplicationVersion(QStringLiteral(GSW_VERSION));
   const QIcon applicationIcon(QStringLiteral(":/icons/gsw-app-icon.png"));
   if (applicationIcon.isNull()) {

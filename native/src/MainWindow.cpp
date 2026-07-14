@@ -200,7 +200,7 @@ MainWindow::MainWindow(QWidget *parent)
   }
 
   setObjectName(QStringLiteral("mainWindow"));
-  setWindowTitle(QStringLiteral("Gaussian Scene Workbench - Native Preview"));
+  setWindowTitle(QStringLiteral("Native Preview"));
   setDockOptions(QMainWindow::AnimatedDocks | QMainWindow::AllowNestedDocks | QMainWindow::AllowTabbedDocks);
   setMinimumSize(940, 620);
 
@@ -1912,7 +1912,7 @@ void MainWindow::updateWorkspaceUi() {
   mProjectStatus->setText(
       projectName + (mWorkspace.isModified() ? QStringLiteral(" *") : QString()) +
       (mRecoveryBlocked ? QStringLiteral(" · 导入恢复待处理") : QString()));
-  setWindowTitle(QStringLiteral("Gaussian Scene Workbench - %1[*]").arg(projectName));
+  setWindowTitle(QStringLiteral("%1[*]").arg(projectName));
   const bool running = mProcessSupervisor.isRunning();
   const bool workspaceReady = mWorkspace.hasProject() && !mRecoveryBlocked;
   mSaveAction->setEnabled(workspaceReady && !running);

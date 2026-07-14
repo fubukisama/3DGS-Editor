@@ -1,5 +1,6 @@
 {
   "product": "Gaussian Scene Workbench",
+  "appUserModelId": "Fubukisama.GaussianSceneWorkbench.Native",
   "version": "0.3.0-native-preview",
   "releaseDate": "2026-07-12",
   "channel": "native-preview",

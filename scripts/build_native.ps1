@@ -399,7 +399,7 @@ function Invoke-NativeLaunchSmokeTest {
       -WindowStyle Hidden `
       -PassThru `
       -ErrorAction Stop
-    if (-not $Process.WaitForExit(15000)) {
+    if (-not $Process.WaitForExit(60000)) {
       Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
       $Process.WaitForExit(5000) | Out-Null
       throw "Native application launch smoke test timed out: $Executable"

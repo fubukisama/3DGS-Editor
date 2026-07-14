@@ -15,6 +15,13 @@ set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
 set(GSW_RELEASE_DATE "2026-07-12" CACHE STRING "Release date shown by the application")
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/build_manifest.json" GSW_BUILD_MANIFEST_JSON)
+string(JSON GSW_APP_USER_MODEL_ID GET "${GSW_BUILD_MANIFEST_JSON}" appUserModelId)
+string(LENGTH "${GSW_APP_USER_MODEL_ID}" GSW_APP_USER_MODEL_ID_LENGTH)
+if(NOT GSW_APP_USER_MODEL_ID MATCHES "^[A-Za-z0-9]+(\\.[A-Za-z0-9]+)+$" OR
+   GSW_APP_USER_MODEL_ID_LENGTH GREATER 128)
+  message(FATAL_ERROR "build_manifest.json contains an invalid appUserModelId")
+endif()
 set(GSW_MSVC_SHOWINCLUDES_PREFIX "" CACHE STRING
   "Locale-correct MSVC /showIncludes prefix supplied by the build bootstrap"
 )
@@ -65,6 +72,7 @@ qt_add_executable(GaussianSceneWorkbench WIN32
 
 if(WIN32)
   target_sources(GaussianSceneWorkbench PRIVATE assets/gsw-app-icon.rc)
+  target_link_libraries(GaussianSceneWorkbench PRIVATE Shell32)
 endif()
 
 target_include_directories(GaussianSceneWorkbench PRIVATE src)
@@ -79,6 +87,7 @@ target_link_libraries(GaussianSceneWorkbench PRIVATE
 target_compile_definitions(GaussianSceneWorkbench PRIVATE
   GSW_VERSION="${PROJECT_VERSION}"
   GSW_RELEASE_DATE="${GSW_RELEASE_DATE}"
+  GSW_APP_USER_MODEL_ID="${GSW_APP_USER_MODEL_ID}"
 )
 
 if(MSVC)
