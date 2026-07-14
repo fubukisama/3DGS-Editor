@@ -10,6 +10,7 @@
 - Managed photo/video import with recursive discovery, metadata manifest, frame extraction, structured progress, and crash-safe journaled publish/recovery (including project reopen); existing image/COLMAP datasets can also be linked in place.
 - Native COLMAP reconstruction dialog with standard, robust, and sequential presets, explicit E-drive executable selection, cache overwrite protection, live logs, cancellation, and sparse-model validation.
 - Native OpenGL point rendering plus depth-sorted screen-space Gaussian splats using activated scale, normalized rotation, sigmoid opacity, and SH-DC color.
+- Optional camera visualization that walks upward from the loaded scene to find a standard 3DGS `cameras.json`, with one camera-trajectory toggle for the frustums and capture path.
 - Automatic Gaussian/point mode selection, deterministic large-scene sampling, scene-bounds camera fitting, and a manual diagnostic fallback.
 - Full-source rectangle/lasso selection plus a persistent 4-256 px continuous brush, with optional visible-point depth filtering, replace/add/subtract, clear, and invert actions.
 - Original-index delete history with undo/redo and atomic cropped PLY export that preserves all vertex fields.
@@ -17,6 +18,8 @@
 - Qt high-DPI support plus persistent 75%-125% manual UI scaling.
 
 The current viewport includes a native Gaussian preview, but it is not yet a production SIBR/vksplat-class tile rasterizer. It projects each 3D covariance to a 2D EWA ellipse, sorts preview splats by camera depth after navigation, and composites premultiplied alpha. Higher-order view-dependent SH, GPU tile sorting/culling, and GPU timing remain pending. The displayed metric is CPU submission time and is not labeled as FPS.
+
+Camera metadata is optional. When a scene is loaded, the desktop searches the scene directory and its parents for the nearest standard 3DGS `cameras.json`; a missing sidecar does not prevent the scene from opening, while an unreadable or malformed sidecar is reported to the user. Loading runs outside the UI thread, invalid entries are counted and skipped, and very long trajectories are evenly decimated for display while retaining the full source count. Reopening the same scene refreshes a repaired sidecar. The camera-trajectory control shows or hides the camera frustums and ordered capture path together. Pressing `Home` resets the view around the loaded scene center.
 
 Rectangle, lasso, and brush selection operate on every source vertex even when display rendering is sampled. The brush shows its exact screen-space radius, persists the chosen size, and uses the same visible-only filter and original-index edit model; GPU ID picking remains pending.
 

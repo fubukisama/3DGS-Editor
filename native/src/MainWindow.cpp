@@ -397,6 +397,21 @@ void MainWindow::createActions() {
     mViewport->setRenderMode(NativeViewport::RenderMode::Points);
   });
 
+  mShowCamerasAction = new QAction(QStringLiteral("相机轨迹"), this);
+  mShowCamerasAction->setObjectName(QStringLiteral("showCamerasAction"));
+  mShowCamerasAction->setCheckable(true);
+  mShowCamerasAction->setChecked(
+      QSettings().value(QStringLiteral("view/showCameras"), false).toBool());
+  mShowCamerasAction->setEnabled(false);
+  mShowCamerasAction->setToolTip(
+      QStringLiteral("显示 cameras.json 中的相机视锥和拍摄路径"));
+  mViewport->setShowCameras(mShowCamerasAction->isChecked());
+  connect(mShowCamerasAction, &QAction::toggled, this,
+          [this](const bool enabled) {
+            QSettings().setValue(QStringLiteral("view/showCameras"), enabled);
+            mViewport->setShowCameras(enabled);
+          });
+
   mEditModeActionGroup = new QActionGroup(this);
   mEditModeActionGroup->setExclusive(true);
 
@@ -571,6 +586,7 @@ void MainWindow::createMenus() {
   QMenu *renderMenu = viewMenu->addMenu(QStringLiteral("渲染模式"));
   renderMenu->addAction(mGaussianRenderAction);
   renderMenu->addAction(mPointRenderAction);
+  viewMenu->addAction(mShowCamerasAction);
   viewMenu->addSeparator();
   viewMenu->addAction(mProjectDock->toggleViewAction());
   viewMenu->addAction(mInspectorDock->toggleViewAction());
@@ -630,6 +646,8 @@ void MainWindow::createToolBars() {
   renderToolbar->setToolButtonStyle(Qt::ToolButtonTextOnly);
   renderToolbar->addAction(mGaussianRenderAction);
   renderToolbar->addAction(mPointRenderAction);
+  renderToolbar->addSeparator();
+  renderToolbar->addAction(mShowCamerasAction);
 
   auto *editToolbar = addToolBar(QStringLiteral("场景编辑"));
   editToolbar->setObjectName(QStringLiteral("editToolbar"));
@@ -747,9 +765,11 @@ void MainWindow::createInspectorDock() {
   mSceneValue = createValueLabel(panel);
   mGaussianCountValue = createValueLabel(panel);
   mPlyFormatValue = createValueLabel(panel);
+  mCameraCountValue = createValueLabel(panel);
   sceneForm->addRow(QStringLiteral("文件"), mSceneValue);
   sceneForm->addRow(QStringLiteral("数量"), mGaussianCountValue);
   sceneForm->addRow(QStringLiteral("格式"), mPlyFormatValue);
+  sceneForm->addRow(QStringLiteral("相机"), mCameraCountValue);
   layout->addLayout(sceneForm);
   layout->addStretch(1);
 
@@ -987,6 +1007,60 @@ void MainWindow::connectServices() {
           [this](const QString &, const QString &message) {
             mRendererStatus->setText(QStringLiteral("点云读取失败"));
             appendTaskEvent(QStringLiteral("场景读取失败：%1").arg(message));
+          });
+  connect(mViewport, &NativeViewport::cameraTrajectoryChanged, this,
+          [this](const qsizetype cameraCount,
+                 const qsizetype invalidCameraCount,
+                 const bool displayDecimated, const QString &sourcePath,
+                 const QString &error) {
+            mCameraCount = cameraCount;
+            mInvalidCameraCount = invalidCameraCount;
+            mCameraDisplayDecimated = displayDecimated;
+            mCameraSourcePath = sourcePath;
+            mCameraTrajectoryError = error;
+            mShowCamerasAction->setEnabled(cameraCount > 0);
+            updateInspector();
+            rebuildProjectTree();
+
+            const QString eventKey =
+                QStringLiteral("%1\n%2\n%3\n%4\n%5")
+                    .arg(QDir::cleanPath(sourcePath))
+                    .arg(cameraCount)
+                    .arg(invalidCameraCount)
+                    .arg(displayDecimated)
+                    .arg(error);
+            if (eventKey == mLastCameraTrajectoryEventKey) {
+              return;
+            }
+            mLastCameraTrajectoryEventKey = eventKey;
+
+            if (!error.isEmpty()) {
+              const QString location = sourcePath.isEmpty()
+                                           ? QStringLiteral("cameras.json")
+                                           : QDir::toNativeSeparators(sourcePath);
+              const QString message =
+                  QStringLiteral("相机轨迹未载入：%1。请检查 %2 是否为有效的标准 3DGS "
+                                 "cameras.json，修复后重新载入场景。")
+                      .arg(error, location);
+              appendTaskEvent(message);
+              statusBar()->showMessage(message, 10000);
+            } else if (cameraCount > 0) {
+              QString message =
+                  QStringLiteral("已载入相机轨迹：%1 个位姿").arg(cameraCount);
+              if (invalidCameraCount > 0) {
+                message +=
+                    QStringLiteral("，跳过 %1 个无效条目").arg(invalidCameraCount);
+              }
+              if (displayDecimated) {
+                message += QStringLiteral("，视口已自动抽稀");
+              }
+              message += QStringLiteral("（%1）。")
+                             .arg(QDir::toNativeSeparators(sourcePath));
+              appendTaskEvent(message);
+              if (invalidCameraCount > 0) {
+                statusBar()->showMessage(message, 8000);
+              }
+            }
           });
   connect(mViewport, &NativeViewport::editStateChanged, this,
           [this](const qsizetype selectedCount, const qsizetype deletedCount,
@@ -1879,6 +1953,25 @@ void MainWindow::rebuildProjectTree() {
   new QTreeWidgetItem(scene, {mWorkspace.scenePath().isEmpty()
                                   ? QStringLiteral("未导入")
                                   : QFileInfo(mWorkspace.scenePath()).fileName()});
+  if (mCameraCount > 0) {
+    auto *cameras = new QTreeWidgetItem(
+        scene,
+        {QStringLiteral("相机位姿 %1%2")
+             .arg(mCameraCount)
+             .arg(mCameraDisplayDecimated ? QStringLiteral("（抽稀显示）")
+                                          : QString())});
+    cameras->setData(0, Qt::UserRole, mCameraSourcePath);
+    if (mInvalidCameraCount > 0) {
+      cameras->setToolTip(
+          0, QStringLiteral("已跳过 %1 个无效相机条目")
+                 .arg(mInvalidCameraCount));
+    }
+  } else if (!mCameraTrajectoryError.isEmpty()) {
+    auto *cameras =
+        new QTreeWidgetItem(scene, {QStringLiteral("相机位姿不可用")});
+    cameras->setData(0, Qt::UserRole, mCameraSourcePath);
+    cameras->setToolTip(0, mCameraTrajectoryError);
+  }
 
   auto *jobs = new QTreeWidgetItem(root, {QStringLiteral("任务")});
   jobs->setIcon(0, style()->standardIcon(QStyle::SP_ComputerIcon));
@@ -1905,6 +1998,33 @@ void MainWindow::updateInspector() {
                                          metadata.looksLikeGaussianSplat() ? QStringLiteral("Gaussian Splat") : QStringLiteral("PLY"),
                                          formatFileSize(metadata.fileSize))
                               : QStringLiteral("-"));
+  if (mCameraCount > 0) {
+    const QString sourceName = mCameraSourcePath.isEmpty()
+                                   ? QStringLiteral("cameras.json")
+                                   : QFileInfo(mCameraSourcePath).fileName();
+    QStringList details;
+    details.append(QStringLiteral("%1 个").arg(mCameraCount));
+    if (mInvalidCameraCount > 0) {
+      details.append(QStringLiteral("跳过 %1").arg(mInvalidCameraCount));
+    }
+    if (mCameraDisplayDecimated) {
+      details.append(QStringLiteral("抽稀显示"));
+    }
+    details.append(sourceName);
+    mCameraCountValue->setText(details.join(QStringLiteral(" | ")));
+    QString tooltip = QDir::toNativeSeparators(mCameraSourcePath);
+    if (mInvalidCameraCount > 0) {
+      tooltip += QStringLiteral("\n已跳过 %1 个无效相机条目")
+                     .arg(mInvalidCameraCount);
+    }
+    mCameraCountValue->setToolTip(tooltip);
+  } else if (!mCameraTrajectoryError.isEmpty()) {
+    mCameraCountValue->setText(QStringLiteral("不可用 | 查看日志"));
+    mCameraCountValue->setToolTip(mCameraTrajectoryError);
+  } else {
+    mCameraCountValue->setText(QStringLiteral("-"));
+    mCameraCountValue->setToolTip(QString());
+  }
 }
 
 void MainWindow::appendLog(const QString &text) {

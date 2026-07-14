@@ -1,3 +1,4 @@
+#include "CameraTrajectory.h"
 #include "ColmapSupport.h"
 #include "PlyPointCloudLoader.h"
 #include "SceneEditModel.h"
@@ -12,6 +13,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QTemporaryDir>
 #include <QTest>
@@ -31,6 +33,12 @@ private slots:
   void exportsFilteredAsciiPlyWithOriginalFields();
   void exportsFilteredBinaryPlyWithoutReencoding();
   void savesAndLoadsPortableProject();
+  void loadsStandardCameraSidecarAndBuildsLegacyAxes();
+  void skipsMalformedCameraEntries();
+  void reportsMalformedCameraDocument();
+  void treatsMissingCameraSidecarAsOptional();
+  void reloadsCameraSidecarAfterRepair();
+  void decimatesLargeCameraVisualization();
 };
 
 namespace {
@@ -43,6 +51,43 @@ void writeLittleEndianFloat(QFile &file, const float value) {
 void appendLittleEndianFloat(QByteArray &bytes, const float value) {
   const quint32 bits = qToLittleEndian(std::bit_cast<quint32>(value));
   bytes.append(reinterpret_cast<const char *>(&bits), sizeof(bits));
+}
+
+QJsonArray vector3(const double x, const double y, const double z) {
+  return {x, y, z};
+}
+
+QJsonArray rotation(const QJsonArray &row0, const QJsonArray &row1,
+                    const QJsonArray &row2) {
+  return {row0, row1, row2};
+}
+
+QJsonObject camera(const QString &name, const QJsonArray &position,
+                   const QJsonArray &cameraRotation, const int width = 400,
+                   const int height = 200) {
+  return {{QStringLiteral("img_name"), name},
+          {QStringLiteral("position"), position},
+          {QStringLiteral("rotation"), cameraRotation},
+          {QStringLiteral("width"), width},
+          {QStringLiteral("height"), height}};
+}
+
+bool writeJson(const QString &path, const QJsonDocument &document) {
+  QFile file(path);
+  return file.open(QIODevice::WriteOnly) &&
+         file.write(document.toJson(QJsonDocument::Compact)) >= 0;
+}
+
+void compareVector(const QVector3D &actual, const QVector3D &expected,
+                   const float tolerance = 0.0001F) {
+  QVERIFY2((actual - expected).length() <= tolerance,
+           qPrintable(QStringLiteral("actual=(%1,%2,%3), expected=(%4,%5,%6)")
+                          .arg(actual.x())
+                          .arg(actual.y())
+                          .arg(actual.z())
+                          .arg(expected.x())
+                          .arg(expected.y())
+                          .arg(expected.z())));
 }
 } // namespace
 
@@ -437,6 +482,178 @@ void WorkspaceDocumentTests::savesAndLoadsPortableProject() {
   QCOMPARE(restored.scenePath(), QDir::cleanPath(plyPath));
   QCOMPARE(restored.imageCount(), 1);
   QCOMPARE(restored.sceneMetadata().vertexCount, 2);
+}
+
+void WorkspaceDocumentTests::loadsStandardCameraSidecarAndBuildsLegacyAxes() {
+  QTemporaryDir temporary;
+  QVERIFY(temporary.isValid());
+  QDir root(temporary.path());
+  QVERIFY(root.mkpath(QStringLiteral("model/point_cloud/iteration_30000")));
+  const QString model = root.filePath(QStringLiteral("model"));
+  const QString scene = root.filePath(
+      QStringLiteral("model/point_cloud/iteration_30000/point_cloud.ply"));
+  QVERIFY(writeJson(
+      QDir(model).filePath(QStringLiteral("cameras.json")),
+      QJsonDocument(QJsonArray{
+          camera(QStringLiteral("left.jpg"), vector3(1.0, 2.0, 3.0),
+                 rotation(vector3(1.0, 0.0, 0.0), vector3(0.0, 0.0, -1.0),
+                          vector3(0.0, 1.0, 0.0))),
+          camera(QStringLiteral("right.jpg"), vector3(3.0, 2.0, 3.0),
+                 rotation(vector3(1.0, 0.0, 0.0), vector3(0.0, 0.0, -1.0),
+                          vector3(0.0, 1.0, 0.0))) })));
+
+  const gsw::CameraTrajectory trajectory =
+      gsw::CameraTrajectory::loadForScene(scene);
+
+  QCOMPARE(trajectory.error(), QString());
+  QCOMPARE(trajectory.cameras().size(), qsizetype(2));
+  QCOMPARE(trajectory.invalidCameraCount(), qsizetype(0));
+  QCOMPARE(QFileInfo(trajectory.sourcePath()).canonicalFilePath(),
+           QFileInfo(QDir(model).filePath(QStringLiteral("cameras.json")))
+               .canonicalFilePath());
+  const gsw::CameraPose &first = trajectory.cameras().constFirst();
+  compareVector(first.right, QVector3D(1.0F, 0.0F, 0.0F));
+  compareVector(first.imageDown, QVector3D(0.0F, 0.0F, 1.0F));
+  compareVector(first.forward, QVector3D(0.0F, -1.0F, 0.0F));
+
+  const gsw::CameraTrajectoryGeometry geometry = trajectory.geometry(2.0F);
+  QCOMPARE(geometry.frustums.size(), qsizetype(16));
+  QCOMPARE(geometry.path.size(), qsizetype(1));
+  compareVector(geometry.path.constFirst().start,
+                QVector3D(1.0F, 2.0F, 3.0F));
+  compareVector(geometry.path.constFirst().end,
+                QVector3D(3.0F, 2.0F, 3.0F));
+  compareVector(geometry.frustums.constFirst().start,
+                QVector3D(1.0F, 2.0F, 3.0F));
+  compareVector(geometry.frustums.constFirst().end,
+                QVector3D(0.92F, 1.872F, 2.96F));
+}
+
+void WorkspaceDocumentTests::skipsMalformedCameraEntries() {
+  QTemporaryDir temporary;
+  QVERIFY(temporary.isValid());
+  const QString scene =
+      QDir(temporary.path()).filePath(QStringLiteral("scene.ply"));
+  const QJsonObject valid = camera(
+      QStringLiteral("valid.jpg"), vector3(0.0, 0.0, 0.0),
+      rotation(vector3(1.0, 0.0, 0.0), vector3(0.0, 1.0, 0.0),
+               vector3(0.0, 0.0, 1.0)));
+  const QJsonObject invalid = camera(
+      QStringLiteral("broken.jpg"), vector3(0.0, 1.0, 0.0),
+      rotation(vector3(1.0, 1.0, 0.0), vector3(0.0, 0.0, 0.0),
+               vector3(0.0, 0.0, 1.0)));
+  QVERIFY(writeJson(
+      QDir(temporary.path()).filePath(QStringLiteral("cameras.json")),
+      QJsonDocument(QJsonArray{valid, invalid})));
+
+  const gsw::CameraTrajectory trajectory =
+      gsw::CameraTrajectory::loadForScene(scene);
+
+  QCOMPARE(trajectory.error(), QString());
+  QCOMPARE(trajectory.cameras().size(), qsizetype(1));
+  QCOMPARE(trajectory.invalidCameraCount(), qsizetype(1));
+  QCOMPARE(trajectory.cameras().constFirst().imageName,
+           QStringLiteral("valid.jpg"));
+  compareVector(trajectory.cameras().constFirst().right,
+                QVector3D(1.0F, 0.0F, 0.0F));
+  compareVector(trajectory.cameras().constFirst().imageDown,
+                QVector3D(0.0F, 1.0F, 0.0F));
+  compareVector(trajectory.cameras().constFirst().forward,
+                QVector3D(0.0F, 0.0F, 1.0F));
+}
+
+void WorkspaceDocumentTests::reportsMalformedCameraDocument() {
+  QTemporaryDir temporary;
+  QVERIFY(temporary.isValid());
+  QFile sidecar(QDir(temporary.path()).filePath(QStringLiteral("cameras.json")));
+  QVERIFY(sidecar.open(QIODevice::WriteOnly));
+  QCOMPARE(sidecar.write("{not-json"), qint64(9));
+  sidecar.close();
+
+  const gsw::CameraTrajectory trajectory =
+      gsw::CameraTrajectory::loadForScene(
+          QDir(temporary.path()).filePath(QStringLiteral("scene.ply")));
+
+  QVERIFY(trajectory.cameras().isEmpty());
+  QVERIFY(!trajectory.sourcePath().isEmpty());
+  QVERIFY(!trajectory.error().isEmpty());
+}
+
+void WorkspaceDocumentTests::treatsMissingCameraSidecarAsOptional() {
+  QTemporaryDir temporary;
+  QVERIFY(temporary.isValid());
+
+  const gsw::CameraTrajectory trajectory =
+      gsw::CameraTrajectory::loadForScene(
+          QDir(temporary.path()).filePath(QStringLiteral("scene.ply")));
+
+  QVERIFY(trajectory.cameras().isEmpty());
+  QCOMPARE(trajectory.sourcePath(), QString());
+  QCOMPARE(trajectory.error(), QString());
+  QVERIFY(trajectory.geometry(1.0F).frustums.isEmpty());
+  QVERIFY(trajectory.geometry(1.0F).path.isEmpty());
+}
+
+void WorkspaceDocumentTests::reloadsCameraSidecarAfterRepair() {
+  QTemporaryDir temporary;
+  QVERIFY(temporary.isValid());
+  const QDir root(temporary.path());
+  const QString scene = root.filePath(QStringLiteral("scene.ply"));
+  const QString sidecar = root.filePath(QStringLiteral("cameras.json"));
+
+  QCOMPARE(gsw::CameraTrajectory::loadForScene(scene).cameras().size(),
+           qsizetype(0));
+
+  QFile damaged(sidecar);
+  QVERIFY(damaged.open(QIODevice::WriteOnly));
+  QCOMPARE(damaged.write("{not-json"), qint64(9));
+  damaged.close();
+  QVERIFY(!gsw::CameraTrajectory::loadForScene(scene).error().isEmpty());
+
+  QVERIFY(writeJson(
+      sidecar,
+      QJsonDocument(QJsonArray{camera(
+          QStringLiteral("repaired.jpg"), vector3(0.0, 0.0, 0.0),
+          rotation(vector3(1.0, 0.0, 0.0), vector3(0.0, 1.0, 0.0),
+                   vector3(0.0, 0.0, 1.0)))})));
+  const gsw::CameraTrajectory repaired =
+      gsw::CameraTrajectory::loadForScene(scene);
+  QCOMPARE(repaired.error(), QString());
+  QCOMPARE(repaired.cameras().size(), qsizetype(1));
+  QCOMPARE(repaired.cameras().constFirst().imageName,
+           QStringLiteral("repaired.jpg"));
+}
+
+void WorkspaceDocumentTests::decimatesLargeCameraVisualization() {
+  QTemporaryDir temporary;
+  QVERIFY(temporary.isValid());
+  const QDir root(temporary.path());
+  QJsonArray cameras;
+  constexpr int cameraCount = 5002;
+  for (int index = 0; index < cameraCount; ++index) {
+    cameras.append(camera(
+        QStringLiteral("frame_%1.jpg").arg(index),
+        vector3(static_cast<double>(index), 0.0, 0.0),
+        rotation(vector3(1.0, 0.0, 0.0), vector3(0.0, 1.0, 0.0),
+                 vector3(0.0, 0.0, 1.0))));
+  }
+  QVERIFY(writeJson(root.filePath(QStringLiteral("cameras.json")),
+                    QJsonDocument(cameras)));
+  const gsw::CameraTrajectory trajectory =
+      gsw::CameraTrajectory::loadForScene(
+          root.filePath(QStringLiteral("scene.ply")));
+
+  QCOMPARE(trajectory.cameras().size(), qsizetype(cameraCount));
+  const gsw::CameraTrajectoryGeometry geometry = trajectory.geometry(1.0F);
+  QVERIFY(geometry.decimated);
+  QCOMPARE(geometry.displayedFrustumCameraCount, qsizetype(1000));
+  QCOMPARE(geometry.displayedPathCameraCount, qsizetype(5000));
+  QCOMPARE(geometry.frustums.size(), qsizetype(8000));
+  QCOMPARE(geometry.path.size(), qsizetype(4999));
+  compareVector(geometry.path.constFirst().start,
+                QVector3D(0.0F, 0.0F, 0.0F));
+  compareVector(geometry.path.constLast().end,
+                QVector3D(static_cast<float>(cameraCount - 1), 0.0F, 0.0F));
 }
 
 QTEST_GUILESS_MAIN(WorkspaceDocumentTests)

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "CameraTrajectory.h"
 #include "PlyPointCloudLoader.h"
 #include "ScreenSpaceSelection.h"
 #include "SceneEditModel.h"
@@ -53,6 +54,7 @@ public:
 
   void setProjectLabel(const QString &label);
   void setScene(const QString &scenePath, qint64 gaussianCount);
+  void setShowCameras(bool enabled);
   void setInteractionMode(InteractionMode mode);
   void setRenderMode(RenderMode mode);
   void setVisibleOnlySelection(bool enabled);
@@ -69,6 +71,8 @@ public:
   [[nodiscard]] bool hasUnsavedSceneEdits() const;
   [[nodiscard]] bool hasEditableScene() const;
   [[nodiscard]] bool gaussianRenderingAvailable() const;
+  [[nodiscard]] bool camerasAvailable() const;
+  [[nodiscard]] qsizetype cameraCount() const;
   [[nodiscard]] RenderMode renderMode() const { return mRenderMode; }
 
 signals:
@@ -82,6 +86,11 @@ signals:
   void selectionBusyChanged(bool busy);
   void gaussianRenderingAvailabilityChanged(bool available);
   void renderModeChanged(gsw::NativeViewport::RenderMode mode);
+  void cameraTrajectoryChanged(qsizetype cameraCount,
+                               qsizetype invalidCameraCount,
+                               bool displayDecimated,
+                               const QString &sourcePath,
+                               const QString &error);
 
 protected:
   void initializeGL() override;
@@ -101,6 +110,8 @@ private:
   [[nodiscard]] QMatrix4x4 viewProjectionMatrix() const;
   [[nodiscard]] std::optional<QPointF> projectPoint(const QVector3D &point,
                                                     const QMatrix4x4 &viewProjection) const;
+  void reloadCameraTrajectory(const QString &scenePath, bool clearExisting);
+  void rebuildCameraGeometry();
   void startSceneLoad(const QString &scenePath);
   void startSelection(const ScreenSelectionRequest &request,
                       SelectionOperation operation);
@@ -112,6 +123,8 @@ private:
   void drawGaussianCloud(const QMatrix4x4 &view,
                          const QMatrix4x4 &projection);
   void drawGrid(QPainter &painter, const QMatrix4x4 &viewProjection);
+  void drawCameraTrajectory(QPainter &painter,
+                            const QMatrix4x4 &viewProjection);
   void drawSelectionGesture(QPainter &painter);
   void drawOverlay(QPainter &painter, double frameMilliseconds);
   void drawAxisGizmo(QPainter &painter);
@@ -136,10 +149,13 @@ private:
   bool mVisibleOnlySelection = true;
   bool mSelectionBusy = false;
   bool mCameraManipulated = false;
+  bool mShowCameras = false;
   bool mHasGaussianAttributes = false;
   bool mGaussianShaderReady = false;
   int mSceneGeneration = 0;
+  int mCameraTrajectoryGeneration = 0;
   RenderMode mRenderMode = RenderMode::Points;
+  QVector3D mSceneCenter = QVector3D(0.0F, 0.0F, 0.0F);
   QVector3D mTarget = QVector3D(0.0F, 0.0F, 0.0F);
   float mYawDegrees = 42.0F;
   float mPitchDegrees = 24.0F;
@@ -148,6 +164,8 @@ private:
   QVector<PointPosition> mSourcePositions;
   QVector<PointCloudVertex> mPreviewVertices;
   QVector<PointCloudVertex> mPendingVertices;
+  CameraTrajectory mCameraTrajectory;
+  CameraTrajectoryGeometry mCameraGeometry;
   SceneEditModel mEditModel;
   bool mPointUploadPending = false;
   QOpenGLShaderProgram *mPointProgram = nullptr;

@@ -24,6 +24,8 @@ qt_add_executable(GaussianSceneWorkbench WIN32
   src/AppTheme.h
   src/BackendLocator.cpp
   src/BackendLocator.h
+  src/CameraTrajectory.cpp
+  src/CameraTrajectory.h
   src/ColmapSupport.cpp
   src/ColmapSupport.h
   src/DatasetImportDialog.cpp
@@ -88,6 +90,8 @@ if(BUILD_TESTING)
   find_package(Qt6 6.8 REQUIRED COMPONENTS Test)
     qt_add_executable(gsw_native_tests
       tests/WorkspaceDocumentTests.cpp
+      src/CameraTrajectory.cpp
+      src/CameraTrajectory.h
       src/ColmapSupport.cpp
       src/ColmapSupport.h
       src/PlyPointCloudLoader.cpp

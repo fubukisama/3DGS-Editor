@@ -101,6 +101,7 @@ private:
   QLabel *mSceneValue = nullptr;
   QLabel *mGaussianCountValue = nullptr;
   QLabel *mPlyFormatValue = nullptr;
+  QLabel *mCameraCountValue = nullptr;
   QLabel *mProjectStatus = nullptr;
   QLabel *mRendererStatus = nullptr;
   QLabel *mEditStatus = nullptr;
@@ -117,6 +118,7 @@ private:
   QAction *mStopAction = nullptr;
   QAction *mGaussianRenderAction = nullptr;
   QAction *mPointRenderAction = nullptr;
+  QAction *mShowCamerasAction = nullptr;
   QAction *mInspectAction = nullptr;
   QAction *mRectangleAction = nullptr;
   QAction *mLassoAction = nullptr;
@@ -139,6 +141,12 @@ private:
   QString mActiveWorkerState;
   qsizetype mSelectedPointCount = 0;
   qsizetype mDeletedPointCount = 0;
+  qsizetype mCameraCount = 0;
+  qsizetype mInvalidCameraCount = 0;
+  bool mCameraDisplayDecimated = false;
+  QString mCameraSourcePath;
+  QString mCameraTrajectoryError;
+  QString mLastCameraTrajectoryEventKey;
   bool mSceneReady = false;
   bool mSelectionBusy = false;
   bool mCanUndoEdit = false;

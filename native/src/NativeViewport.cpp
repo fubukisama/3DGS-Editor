@@ -82,6 +82,7 @@ void NativeViewport::setProjectLabel(const QString &label) {
 void NativeViewport::setScene(const QString &scenePath, const qint64 gaussianCount) {
   mGaussianCount = gaussianCount;
   if (mRequestedScenePath == scenePath) {
+    reloadCameraTrajectory(scenePath, false);
     update();
     return;
   }
@@ -109,6 +110,8 @@ void NativeViewport::setScene(const QString &scenePath, const qint64 gaussianCou
   mPreviewVertices.squeeze();
   mPendingVertices.clear();
   mPendingVertices.squeeze();
+  mSceneCenter = QVector3D(0.0F, 0.0F, 0.0F);
+  mSceneRadius = 4.0F;
   mEditModel.reset(0);
   mPointUploadPending = true;
   notifyEditState();
@@ -118,12 +121,20 @@ void NativeViewport::setScene(const QString &scenePath, const qint64 gaussianCou
   if (renderModeChangedToPoints) {
     emit renderModeChanged(mRenderMode);
   }
+  reloadCameraTrajectory(scenePath, true);
+  resetCamera();
   if (scenePath.isEmpty()) {
-    mSceneRadius = 4.0F;
-    resetCamera();
     return;
   }
   startSceneLoad(scenePath);
+  update();
+}
+
+void NativeViewport::setShowCameras(const bool enabled) {
+  if (mShowCameras == enabled) {
+    return;
+  }
+  mShowCameras = enabled;
   update();
 }
 
@@ -165,6 +176,7 @@ void NativeViewport::setBrushRadius(const int pixels) {
 }
 
 void NativeViewport::resetCamera() {
+  mTarget = mSceneCenter;
   mYawDegrees = 42.0F;
   mPitchDegrees = 24.0F;
   mDistance = std::max(mSceneRadius * 2.8F, 0.1F);
@@ -243,6 +255,14 @@ bool NativeViewport::hasEditableScene() const {
 
 bool NativeViewport::gaussianRenderingAvailable() const {
   return mHasGaussianAttributes && mGaussianShaderReady;
+}
+
+bool NativeViewport::camerasAvailable() const {
+  return !mCameraTrajectory.cameras().isEmpty();
+}
+
+qsizetype NativeViewport::cameraCount() const {
+  return mCameraTrajectory.cameras().size();
 }
 
 void NativeViewport::initializeGL() {
@@ -513,6 +533,7 @@ void NativeViewport::paintGL() {
   if (mPreviewPointCount == 0) {
     drawGrid(painter, viewProjection);
   }
+  drawCameraTrajectory(painter, viewProjection);
   drawSelectionGesture(painter);
 
   const double frameMilliseconds = paintTimer.nsecsElapsed() / 1000000.0;
@@ -525,6 +546,44 @@ void NativeViewport::paintGL() {
   drawAxisGizmo(painter);
   painter.end();
   emit frameTimeChanged(mSmoothedFrameMilliseconds);
+}
+
+void NativeViewport::reloadCameraTrajectory(const QString &scenePath,
+                                            const bool clearExisting) {
+  const int generation = ++mCameraTrajectoryGeneration;
+  if (clearExisting || scenePath.isEmpty()) {
+    mCameraTrajectory = {};
+    rebuildCameraGeometry();
+    emit cameraTrajectoryChanged(0, 0, false, QString(), QString());
+  }
+  if (scenePath.isEmpty()) {
+    return;
+  }
+
+  auto *watcher = new QFutureWatcher<CameraTrajectory>(this);
+  connect(watcher, &QFutureWatcher<CameraTrajectory>::finished, this,
+          [this, watcher, scenePath, generation]() {
+            CameraTrajectory trajectory = watcher->result();
+            watcher->deleteLater();
+            if (generation != mCameraTrajectoryGeneration ||
+                scenePath != mRequestedScenePath) {
+              return;
+            }
+            mCameraTrajectory = std::move(trajectory);
+            rebuildCameraGeometry();
+            emit cameraTrajectoryChanged(
+                cameraCount(), mCameraTrajectory.invalidCameraCount(),
+                mCameraGeometry.decimated, mCameraTrajectory.sourcePath(),
+                mCameraTrajectory.error());
+            update();
+          });
+  watcher->setFuture(QtConcurrent::run([scenePath]() {
+    return CameraTrajectory::loadForScene(scenePath);
+  }));
+}
+
+void NativeViewport::rebuildCameraGeometry() {
+  mCameraGeometry = mCameraTrajectory.geometry(mSceneRadius);
 }
 
 void NativeViewport::startSceneLoad(const QString &scenePath) {
@@ -547,8 +606,10 @@ void NativeViewport::startSceneLoad(const QString &scenePath) {
               return;
             }
 
-            mTarget = data.center();
+            mSceneCenter = data.center();
+            mTarget = mSceneCenter;
             mSceneRadius = data.radius();
+            rebuildCameraGeometry();
             mPreviewPointCount = data.vertices.size();
             mSourcePositions = std::move(data.sourcePositions);
             mPreviewVertices = std::move(data.vertices);
@@ -981,6 +1042,40 @@ void NativeViewport::drawGrid(QPainter &painter, const QMatrix4x4 &viewProjectio
   }
 }
 
+void NativeViewport::drawCameraTrajectory(
+    QPainter &painter, const QMatrix4x4 &viewProjection) {
+  if (!mShowCameras || !camerasAvailable()) {
+    return;
+  }
+
+  const auto drawSegments = [this, &painter, &viewProjection](
+                                const QList<CameraLineSegment> &segments) {
+    QList<QLineF> projectedLines;
+    projectedLines.reserve(segments.size());
+    for (const CameraLineSegment &segment : segments) {
+      const auto start = projectPoint(segment.start, viewProjection);
+      const auto end = projectPoint(segment.end, viewProjection);
+      if (start.has_value() && end.has_value()) {
+        projectedLines.append(QLineF(*start, *end));
+      }
+    }
+    if (!projectedLines.isEmpty()) {
+      painter.drawLines(projectedLines);
+    }
+  };
+
+  painter.save();
+  painter.setRenderHint(QPainter::Antialiasing, true);
+  painter.setBrush(Qt::NoBrush);
+  painter.setPen(QPen(QColor(109, 160, 255, 205), 1.8, Qt::SolidLine,
+                      Qt::RoundCap, Qt::RoundJoin));
+  drawSegments(mCameraGeometry.path);
+  painter.setPen(QPen(QColor(84, 209, 122, 220), 1.25, Qt::SolidLine,
+                      Qt::RoundCap, Qt::RoundJoin));
+  drawSegments(mCameraGeometry.frustums);
+  painter.restore();
+}
+
 void NativeViewport::drawSelectionGesture(QPainter &painter) {
   const bool drawBrushCursor =
       mMode == InteractionMode::Brush && mBrushCursorVisible;
@@ -1055,6 +1150,12 @@ void NativeViewport::drawOverlay(QPainter &painter, const double frameMillisecon
                                             : QStringLiteral("点"));
   } else {
     count = QStringLiteral("场景数据待载入");
+  }
+  if (mShowCameras) {
+    count += QStringLiteral(" | 相机 %1%2")
+                 .arg(formatCount(cameraCount()),
+                      mCameraGeometry.decimated ? QStringLiteral("（抽稀）")
+                                                : QString());
   }
   if (mSelectionBusy) {
     count += QStringLiteral(" | 正在计算选择");
