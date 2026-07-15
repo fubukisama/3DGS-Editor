@@ -555,10 +555,10 @@ def scene_splat_assets(scene, iteration):
     return [
         asset_file(
             source,
-            "PLY point cloud",
+            "Gaussian PLY model",
             "ply",
-            f"/api/ply?scene={scene}&iteration={iteration}",
-            {"format": "ply"},
+            f"/api/splat/ply?scene={scene}&iteration={iteration}",
+            {"format": "ply", "label_key": "asset.gaussianPly"},
         ),
         asset_file(
             parent / "point_cloud.spz",
@@ -6955,6 +6955,16 @@ class Handler(BaseHTTPRequestHandler):
                 scene = safe_name(qs.get("scene", [""])[0])
                 iteration = int(qs.get("iteration", [latest_iteration(scene)])[0])
                 return self.serve_file(ply_path(scene, iteration), "application/octet-stream")
+            if parsed.path == "/api/splat/ply":
+                qs = parse_qs(parsed.query)
+                scene = safe_name(qs.get("scene", [""])[0])
+                iteration = int(qs.get("iteration", [latest_iteration(scene)])[0])
+                download_name = f"{scene}_iteration_{iteration}_gaussians.ply"
+                return self.serve_file(
+                    ply_path(scene, iteration),
+                    "application/octet-stream",
+                    download_name,
+                )
             if parsed.path == "/api/splat/export":
                 qs = parse_qs(parsed.query)
                 scene = safe_name(qs.get("scene", [""])[0])
