@@ -65,6 +65,7 @@ const visibleSelectionToggle = document.getElementById("visibleSelection");
 const splatImportFileInput = document.getElementById("splatImportFile");
 const openAssetManagerButton = document.getElementById("openAssetManager");
 const openExperimentManagerButton = document.getElementById("openExperimentManager");
+const downloadPlyButton = document.getElementById("downloadPly");
 const downloadSpzButton = document.getElementById("downloadSpz");
 const downloadSogButton = document.getElementById("downloadSog");
 const trainSceneInput = document.getElementById("trainScene");
@@ -270,6 +271,7 @@ const I18N = {
     "button.pinCheckpoint": "Pin",
     "button.unpinCheckpoint": "Unpin",
     "button.deleteCheckpoint": "Delete CKPT",
+    "button.downloadPly": "Export PLY",
     "button.downloadSpz": "Download SPZ",
     "button.downloadSog": "Download SOG",
     "button.exportAsset": "Export",
@@ -280,6 +282,7 @@ const I18N = {
     "button.cancelJob": "Cancel",
     "button.retryJob": "Retry",
     "button.downloadJob": "Download",
+    "asset.gaussianPly": "Gaussian PLY model",
     "button.openOutput": "Open Output",
     "button.openLog": "Log",
     "button.exportMesh": "Export Mesh",
@@ -456,6 +459,7 @@ const I18N = {
     "button.pinCheckpoint": "固定",
     "button.unpinCheckpoint": "取消固定",
     "button.deleteCheckpoint": "删除CKPT",
+    "button.downloadPly": "导出 PLY",
     "button.downloadSpz": "下载 SPZ",
     "button.downloadSog": "下载 SOG",
     "button.exportAsset": "导出",
@@ -466,6 +470,7 @@ const I18N = {
     "button.cancelJob": "终止",
     "button.retryJob": "重试",
     "button.downloadJob": "下载",
+    "asset.gaussianPly": "Gaussian PLY 模型",
     "button.openOutput": "打开目录",
     "button.openLog": "日志",
     "button.exportMesh": "导出网格",
@@ -642,6 +647,7 @@ const I18N = {
     "button.pinCheckpoint": "固定",
     "button.unpinCheckpoint": "固定解除",
     "button.deleteCheckpoint": "CKPT削除",
+    "button.downloadPly": "PLY 保存",
     "button.downloadSpz": "SPZ 保存",
     "button.downloadSog": "SOG 保存",
     "button.exportAsset": "出力",
@@ -652,6 +658,7 @@ const I18N = {
     "button.cancelJob": "中止",
     "button.retryJob": "再実行",
     "button.downloadJob": "保存",
+    "asset.gaussianPly": "Gaussian PLY モデル",
     "button.openOutput": "出力を開く",
     "button.openLog": "ログ",
     "button.exportMesh": "メッシュ出力",
@@ -1224,6 +1231,7 @@ function initUi() {
   splatImportFileInput.onchange = importSplatFile;
   openAssetManagerButton.onclick = showAssetManager;
   if (openExperimentManagerButton) openExperimentManagerButton.onclick = showExperimentManager;
+  downloadPlyButton.onclick = downloadGaussianPly;
   downloadSpzButton.onclick = () => downloadSplatFormat("spz");
   downloadSogButton.onclick = () => downloadSplatFormat("sog");
   meshModeSelect.onchange = () => {
@@ -1634,6 +1642,8 @@ async function loadScenes() {
     const opt = document.createElement("option");
     opt.value = item.name;
     opt.textContent = item.backend ? `${item.name} [${item.backend.toUpperCase()}]` : item.name;
+    opt.title = item.path || "";
+    opt.dataset.path = item.path || "";
     opt.dataset.iteration = item.latest_iteration;
     opt.dataset.backend = item.backend || "3dgs";
     sceneSelect.appendChild(opt);
@@ -2174,6 +2184,7 @@ function showAssetManager() {
 }
 
 function assetKindLabel(asset) {
+  if (asset.label_key) return t(asset.label_key);
   return asset.label || asset.kind || "Asset";
 }
 
@@ -2841,6 +2852,7 @@ function setMeshBusy(busy) {
   downloadGlbButton.disabled = busy || !currentScene;
   if (openAssetManagerButton) openAssetManagerButton.disabled = busy || !currentScene;
   if (openExperimentManagerButton) openExperimentManagerButton.disabled = busy || !currentScene;
+  downloadPlyButton.disabled = busy || !currentScene;
   downloadSpzButton.disabled = busy || !currentScene;
   downloadSogButton.disabled = busy || !currentScene;
   splatImportFileInput.disabled = busy;
@@ -3126,6 +3138,24 @@ async function importSplatFile() {
     setTrainingBusy(false);
     splatImportFileInput.value = "";
   }
+}
+
+function downloadGaussianPly() {
+  if (!currentScene) {
+    setStatus("Load a scene before exporting the Gaussian PLY model.");
+    return;
+  }
+  const iteration = currentIteration || Number(iterationInput.value || 0);
+  const url = apiPath(
+    `/api/splat/ply?scene=${encodeURIComponent(currentScene)}&iteration=${encodeURIComponent(iteration)}`,
+  );
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setStatus(`Exporting original Gaussian PLY: ${currentScene}, iteration ${iteration}.`);
 }
 
 async function downloadSplatFormat(format) {
