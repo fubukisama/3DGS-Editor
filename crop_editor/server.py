@@ -2747,28 +2747,12 @@ def prepare_sugar_checkpoint(model_path, source_path, iteration, options=None):
     return stage, staged_source
 
 
-def colmap_executable():
-    configured = os.environ.get("COLMAP_PATH")
-    if configured:
-        return Path(configured)
-    local_candidates = [
-        ROOT / "third_party" / "colmap" / "bin" / "colmap.exe",
-        ROOT / "tools" / "colmap" / "bin" / "colmap.exe",
-        ROOT / "colmap" / "bin" / "colmap.exe",
-    ]
-    for candidate in local_candidates:
-        if candidate.exists():
-            return candidate
-    userprofile = os.environ.get("USERPROFILE", str(Path.home()))
-    candidate = Path(userprofile) / "Downloads" / "colmap-x64-windows-cuda" / "bin" / "colmap.exe"
-    if candidate.exists():
-        return candidate
-    found = shutil.which("colmap")
-    return Path(found) if found else candidate
-
-
 def colmap_process_env():
     env = os.environ.copy()
+    for name in list(env):
+        normalized = name.upper()
+        if normalized.startswith("CONDA_") or normalized.startswith("_CONDA_"):
+            env.pop(name, None)
     env["PYTHONUTF8"] = "1"
     colmap = colmap_executable()
     path_parts = [str(colmap.parent), env.get("PATH", "")]
@@ -3346,6 +3330,41 @@ def openmvs_bin_dirs():
     return dirs
 
 
+def versioned_colmap_candidates(install_roots=None):
+    drive_root = Path(ROOT.anchor) if ROOT.anchor else ROOT
+    if install_roots is None:
+        install_roots = (
+            drive_root / "Tools" / "COLMAP",
+            drive_root / "tools" / "colmap",
+            drive_root / "COLMAP",
+        )
+    candidates = []
+    for install_root in map(Path, install_roots):
+        direct = install_root / "bin" / "colmap.exe"
+        if not install_root.is_dir():
+            continue
+
+        def version_key(path):
+            try:
+                return tuple(int(part) for part in path.name.split("."))
+            except ValueError:
+                return ()
+
+        version_dirs = sorted(
+            (path for path in install_root.iterdir() if path.is_dir()),
+            key=version_key,
+            reverse=True,
+        )
+        candidates.extend(
+            path / "bin" / "colmap.exe"
+            for path in version_dirs
+            if (path / "bin" / "colmap.exe").is_file()
+        )
+        if direct.is_file():
+            candidates.append(direct)
+    return candidates
+
+
 def openmvs_executable(name):
     exe_name = f"{name}.exe" if os.name == "nt" and not name.lower().endswith(".exe") else name
     for directory in openmvs_bin_dirs():
@@ -3357,14 +3376,16 @@ def openmvs_executable(name):
 
 
 def colmap_executable():
-    env_colmap = os.environ.get("COLMAP_EXE")
-    if env_colmap and Path(env_colmap).exists():
-        return Path(env_colmap)
+    for variable in ("COLMAP_EXE", "COLMAP_PATH"):
+        configured = os.environ.get(variable)
+        if configured and Path(configured).is_file():
+            return Path(configured)
     fallback = ROOT / "third_party" / "colmap" / "bin" / "colmap.exe"
     for candidate in (
         fallback,
         ROOT / "tools" / "colmap" / "bin" / "colmap.exe",
         ROOT / "colmap" / "bin" / "colmap.exe",
+        *versioned_colmap_candidates(),
     ):
         if candidate.exists():
             return candidate

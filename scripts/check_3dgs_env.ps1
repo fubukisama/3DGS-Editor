@@ -22,7 +22,20 @@ if (-not $CondaRoot) {
     )
     $CondaRoot = $CondaRootCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 }
-$ColmapBin = Join-Path $env:USERPROFILE "Downloads\colmap-x64-windows-cuda\bin"
+$ColmapCandidates = @($env:COLMAP_PATH, $env:COLMAP_EXE) | Where-Object { $_ }
+$ColmapCandidates += @(
+    (Join-Path $InstallRoot "COLMAP\bin\colmap.exe"),
+    (Join-Path $env:USERPROFILE "Downloads\colmap-x64-windows-cuda\bin\colmap.exe")
+)
+$VersionedColmapRoot = Join-Path $InstallRoot "Tools\COLMAP"
+if (Test-Path -LiteralPath $VersionedColmapRoot) {
+    $ColmapCandidates += Get-ChildItem -LiteralPath $VersionedColmapRoot -Directory |
+        Sort-Object { try { [version]$_.Name } catch { [version]'0.0' } } -Descending |
+        ForEach-Object { Join-Path $_.FullName "bin\colmap.exe" }
+}
+$ColmapExe = $ColmapCandidates |
+    Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } |
+    Select-Object -First 1
 if ($GaussianEnv -and (Test-Path $GaussianEnv)) {
     $env:GAUSSIAN_SPLATTING_CONDA_PREFIX = $GaussianEnv
     $env:CONDA_PREFIX = $GaussianEnv
@@ -31,8 +44,10 @@ if ($GaussianEnv -and (Test-Path $GaussianEnv)) {
 if ($CondaRoot -and (Test-Path $CondaRoot)) {
     $env:Path = "$CondaRoot;$CondaRoot\Scripts;$CondaRoot\condabin;$env:Path"
 }
-if (Test-Path $ColmapBin) {
-    $env:Path = "$ColmapBin;$env:Path"
+if ($ColmapExe) {
+    $env:COLMAP_PATH = $ColmapExe
+    $env:COLMAP_EXE = $ColmapExe
+    $env:Path = "$(Split-Path -Parent $ColmapExe);$env:Path"
 }
 
 function Test-Tool {
@@ -54,7 +69,11 @@ Test-Tool "NVIDIA GPU driver" "nvidia-smi"
 Test-Tool "Python" "python --version"
 Test-Tool "Conda" "conda --version"
 Test-Tool "Git" "git --version"
-Test-Tool "COLMAP" "colmap -h"
+if ($ColmapExe) {
+    Test-Tool "COLMAP" "& `"$ColmapExe`" -h"
+} else {
+    Test-Tool "COLMAP" "colmap -h"
+}
 Test-Tool "CUDA compiler" "nvcc --version"
 
 Write-Host ""

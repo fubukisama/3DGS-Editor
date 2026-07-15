@@ -2,8 +2,12 @@
 
 #include <QDir>
 #include <QFileInfo>
+#include <QList>
 #include <QStandardPaths>
 #include <QStringList>
+#include <QVersionNumber>
+
+#include <algorithm>
 
 namespace gsw {
 
@@ -84,6 +88,44 @@ bool hasColmapWorkingData(const QString &datasetPath) {
   return false;
 }
 
+QString findVersionedColmapExecutable(const QString &installRoot) {
+  const QDir root(installRoot);
+  if (!root.exists()) {
+    return {};
+  }
+  const QString direct = root.filePath(QStringLiteral("bin/colmap.exe"));
+
+  struct Candidate {
+    QVersionNumber version;
+    QString executable;
+  };
+  QList<Candidate> candidates;
+  const QFileInfoList directories =
+      root.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+  for (const QFileInfo &directory : directories) {
+    const QVersionNumber version =
+        QVersionNumber::fromString(directory.fileName());
+    const QString executable =
+        QDir(directory.absoluteFilePath())
+            .filePath(QStringLiteral("bin/colmap.exe"));
+    if (!version.isNull() && QFileInfo(executable).isFile()) {
+      candidates.append({version, executable});
+    }
+  }
+  std::sort(candidates.begin(), candidates.end(),
+            [](const Candidate &left, const Candidate &right) {
+              return QVersionNumber::compare(left.version, right.version) > 0;
+            });
+  if (!candidates.isEmpty()) {
+    return QDir::toNativeSeparators(
+        QFileInfo(candidates.first().executable).absoluteFilePath());
+  }
+  return QFileInfo(direct).isFile()
+             ? QDir::toNativeSeparators(
+                   QFileInfo(direct).absoluteFilePath())
+             : QString();
+}
+
 QString findColmapExecutable(const QString &repositoryRoot,
                              const QString &preferredPath) {
   QStringList candidates;
@@ -95,8 +137,12 @@ QString findColmapExecutable(const QString &repositoryRoot,
                << repository.filePath(QStringLiteral("tools/colmap/bin/colmap.exe"))
                << repository.filePath(QStringLiteral("colmap/bin/colmap.exe"));
     const QDir drive(repository.rootPath());
-    candidates << drive.filePath(QStringLiteral("COLMAP/bin/colmap.exe"))
-               << drive.filePath(QStringLiteral("colmap/bin/colmap.exe"));
+    candidates << findVersionedColmapExecutable(
+                      drive.filePath(QStringLiteral("Tools/COLMAP")))
+               << findVersionedColmapExecutable(
+                      drive.filePath(QStringLiteral("tools/colmap")))
+               << findVersionedColmapExecutable(
+                      drive.filePath(QStringLiteral("COLMAP")));
   }
   candidates << QDir(QDir::homePath())
                     .filePath(QStringLiteral(

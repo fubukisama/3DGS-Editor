@@ -261,82 +261,65 @@ function Test-PathReport($path, $name) {
   return $false
 }
 
+function Get-VersionedColmapExe {
+  $installRoot = Join-Path (Get-InstallDriveRoot) "Tools\COLMAP"
+  if (-not (Test-Path -LiteralPath $installRoot -PathType Container)) {
+    return $null
+  }
+  $versioned = Get-ChildItem -LiteralPath $installRoot -Directory |
+    Where-Object { $_.Name -match '^\d+(\.\d+)+$' } |
+    Sort-Object { [version]$_.Name } -Descending |
+    ForEach-Object { Join-Path $_.FullName "bin\colmap.exe" } |
+    Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } |
+    Select-Object -First 1
+  if ($versioned) { return $versioned }
+  $direct = Join-Path $installRoot "bin\colmap.exe"
+  if (Test-Path -LiteralPath $direct -PathType Leaf) { return $direct }
+  return $null
+}
+
 function Get-LocalColmapExe {
+  $versioned = Get-VersionedColmapExe
   $candidates = @(
+    $env:COLMAP_EXE,
+    $env:COLMAP_PATH,
+    $versioned,
     (Join-Path $Root "third_party\colmap\bin\colmap.exe"),
     (Join-Path $Root "tools\colmap\bin\colmap.exe"),
     (Join-Path $Root "colmap\bin\colmap.exe"),
     (Join-Path $env:USERPROFILE "Downloads\colmap-x64-windows-cuda\bin\colmap.exe")
-  )
-  foreach ($candidate in $candidates) {
-    if (Test-Path -LiteralPath $candidate) { return $candidate }
+  ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+  foreach ($candidate in @($candidates | Select-Object -Unique)) {
+    if (Test-Path -LiteralPath $candidate -PathType Leaf) { return $candidate }
   }
-  return $candidates[0]
+  return Join-Path (Get-InstallDriveRoot) "Tools\COLMAP\bin\colmap.exe"
 }
 
 function Install-Colmap {
-  $targetRoot = Join-Path $Root "third_party\colmap"
-  $targetExe = Join-Path $targetRoot "bin\colmap.exe"
-  if (Test-Path -LiteralPath $targetExe) {
-    Write-Step "SKIP: bundled COLMAP already installed -> $targetExe"
-    return $targetExe
+  $existing = Get-LocalColmapExe
+  if (Test-Path -LiteralPath $existing -PathType Leaf) {
+    Write-Step "SKIP: COLMAP already installed -> $existing"
+    return $existing
   }
-  Mark-Missing "COLMAP" $targetExe
+  $targetRoot = Join-Path (Get-InstallDriveRoot) "Tools\COLMAP"
+  Mark-Missing "COLMAP" $targetRoot
   if ($CheckOnly) { return $null }
-  if (-not (Confirm-Step "Download and install COLMAP into this app folder now?")) {
+  if (-not (Confirm-Step "Download and install CUDA COLMAP into $targetRoot now?")) {
     Write-Step "Skipped COLMAP install."
     return $null
   }
 
-  $downloadDir = Join-Path $Root "third_party\downloads"
-  $extractDir = Join-Path $Root "third_party\colmap_extract"
-  New-Item -ItemType Directory -Force -Path $downloadDir | Out-Null
-  if (Test-Path -LiteralPath $extractDir) {
-    Remove-Item -LiteralPath $extractDir -Recurse -Force
+  $installer = Join-Path $Root "scripts\install_colmap.ps1"
+  if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) {
+    throw "Missing COLMAP installer: $installer"
   }
-  New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
-
-  Write-Step "Querying COLMAP releases..."
-  [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-  $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/colmap/colmap/releases" -Headers @{ "User-Agent" = "Gaussian-Scene-Workbench-Setup" }
-  $asset = $null
-  foreach ($release in $releases) {
-    $asset = @($release.assets) | Where-Object { $_.name -match "(?i)windows.*cuda.*\.zip$|colmap.*cuda.*windows.*\.zip$|colmap-x64-windows-cuda.*\.zip$" } | Select-Object -First 1
-    if ($asset) { break }
+  $installedPaths = @(& $installer -InstallRoot $targetRoot -Variant cuda -Version latest)
+  $targetExe = $installedPaths |
+    Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } |
+    Select-Object -Last 1
+  if (-not $targetExe) {
+    throw "COLMAP installer completed without returning a valid executable."
   }
-  if (-not $asset) {
-    foreach ($release in $releases) {
-      $asset = @($release.assets) | Where-Object { $_.name -match "(?i)windows.*\.zip$|win.*x64.*\.zip$" } | Select-Object -First 1
-      if ($asset) { break }
-    }
-  }
-  if (-not $asset) {
-    throw "Could not find a Windows COLMAP zip in GitHub releases."
-  }
-
-  $zip = Join-Path $downloadDir $asset.name
-  Write-Step "Downloading COLMAP: $($asset.browser_download_url)"
-  Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zip -Headers @{ "User-Agent" = "Gaussian-Scene-Workbench-Setup" }
-  Write-Step "Extracting COLMAP..."
-  Expand-Archive -LiteralPath $zip -DestinationPath $extractDir -Force
-
-  $foundExe = Get-ChildItem -LiteralPath $extractDir -Recurse -Filter "colmap.exe" | Select-Object -First 1
-  if (-not $foundExe) {
-    throw "COLMAP download extracted, but colmap.exe was not found."
-  }
-  $copyRoot = $foundExe.Directory
-  if ($copyRoot.Name -ieq "bin") {
-    $copyRoot = $copyRoot.Parent
-  }
-  if (Test-Path -LiteralPath $targetRoot) {
-    Remove-Item -LiteralPath $targetRoot -Recurse -Force
-  }
-  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $targetRoot) | Out-Null
-  Copy-Item -LiteralPath $copyRoot.FullName -Destination $targetRoot -Recurse -Force
-  if (-not (Test-Path -LiteralPath $targetExe)) {
-    throw "COLMAP install did not create expected executable: $targetExe"
-  }
-  Remove-Item -LiteralPath $extractDir -Recurse -Force -ErrorAction SilentlyContinue
   Write-Step "COLMAP installed: $targetExe"
   Clear-ComponentIssue "COLMAP"
   return $targetExe
@@ -548,7 +531,7 @@ $env:MINIFORGE_ROOT = Split-Path -Parent (Split-Path -Parent $MiniforgeConda)
 $env:CONDA_ROOT = $env:MINIFORGE_ROOT
 $env:GAUSSIAN_SPLATTING_CONDA_PREFIX = Split-Path -Parent $EnvPython
 $env:GS_CONDA_PREFIX = $env:GAUSSIAN_SPLATTING_CONDA_PREFIX
-$ColmapExe = if ($env:COLMAP_EXE) { $env:COLMAP_EXE } else { Get-LocalColmapExe }
+$ColmapExe = Get-LocalColmapExe
 
 if (-not (Test-PathReport $MiniforgeConda "Miniforge conda")) {
   $installedConda = Install-Miniforge
