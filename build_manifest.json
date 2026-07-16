@@ -4,11 +4,11 @@
     "packageVersion":  "0.2.6",
     "releaseTag":  "v0.2.6",
     "packageName":  "Gaussian-Scene-Workbench-0.2.6-win-x64.zip",
-    "updatedAt":  "2026-07-16T22:52:54+09:00",
+    "updatedAt":  "2026-07-16T23:00:35+09:00",
     "updatedBy":  "Ishida_Lab",
     "machine":  "DESKTOP-UTA4K5M",
     "gitBranch":  "main",
-    "gitCommit":  "2596eae",
-    "gitDirty":  true,
+    "gitCommit":  "20eb152",
+    "gitDirty":  false,
     "note":  "Import Metashape COLMAP cameras with scale-preserving 3DGS and 2DGS training"
 }
