@@ -647,7 +647,11 @@ class TrainingBackendTests(unittest.TestCase):
                     mock.patch.object(server, "run_colmap_convert"),
                     mock.patch.object(server, "resolve_training_options_for_environment", side_effect=lambda backend, options, job: options),
                     mock.patch.object(server, "write_training_metadata"),
-                    mock.patch.object(server, "latest_iteration", return_value=1000),
+                    mock.patch.object(server, "training_point_cloud", return_value={
+                        "iteration": 1000,
+                        "path": "point_cloud.ply",
+                        "vertex_count": 42,
+                    }),
                     mock.patch.object(server, "persist_train_job"),
                 ):
                     server.run_training_job(job, run_convert=False, quality="quick", overwrite=False)
@@ -744,7 +748,11 @@ class TrainingBackendTests(unittest.TestCase):
                     mock.patch.object(server, "run_colmap_convert") as colmap_mock,
                     mock.patch.object(server, "resolve_training_options_for_environment", side_effect=lambda backend, options, job: options),
                     mock.patch.object(server, "write_training_metadata"),
-                    mock.patch.object(server, "latest_iteration", return_value=1000),
+                    mock.patch.object(server, "training_point_cloud", return_value={
+                        "iteration": 1000,
+                        "path": "point_cloud.ply",
+                        "vertex_count": 42,
+                    }),
                     mock.patch.object(server, "persist_train_job"),
                 ):
                     server.run_training_job(job, run_convert=False, quality="quick", overwrite=False)
@@ -790,7 +798,11 @@ class TrainingBackendTests(unittest.TestCase):
                     mock.patch.object(server, "run_colmap_convert") as colmap_mock,
                     mock.patch.object(server, "resolve_training_options_for_environment", side_effect=lambda backend, options, job: options),
                     mock.patch.object(server, "write_training_metadata"),
-                    mock.patch.object(server, "latest_iteration", return_value=1000),
+                    mock.patch.object(server, "training_point_cloud", return_value={
+                        "iteration": 1000,
+                        "path": "point_cloud.ply",
+                        "vertex_count": 42,
+                    }),
                     mock.patch.object(server, "persist_train_job"),
                 ):
                     server.run_training_job(job, run_convert=False, quality="quick", overwrite=False)
@@ -1009,7 +1021,11 @@ class TrainingBackendTests(unittest.TestCase):
                     mock.patch.object(server, "run_colmap_convert") as colmap_mock,
                     mock.patch.object(server, "resolve_training_options_for_environment", side_effect=lambda backend, options, job: options),
                     mock.patch.object(server, "write_training_metadata"),
-                    mock.patch.object(server, "latest_iteration", return_value=1000),
+                    mock.patch.object(server, "training_point_cloud", return_value={
+                        "iteration": 1000,
+                        "path": "point_cloud.ply",
+                        "vertex_count": 42,
+                    }),
                     mock.patch.object(server, "persist_train_job"),
                 ):
                     server.run_training_job(job, run_convert=False, quality="quick", overwrite=False)

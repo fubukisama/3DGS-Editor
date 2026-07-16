@@ -57,6 +57,12 @@ MESH_MODES = {"bounded", "unbounded", "sugar", "gs2mesh"}
 SPARSE_ADAM_AVAILABLE_CACHE = None
 MESH_PREVIEW_MAX_FACES = 300000
 MESH_CHUNK_MAX_FACES = 250000
+TRAINING_PROGRESS_PATTERN = re.compile(r"\[gsw-training-progress\]\s+(\d+)\s*/\s*(\d+)")
+WINDOWS_DEVICE_NAMES = {
+    "CON", "PRN", "AUX", "NUL",
+    *(f"COM{index}" for index in range(1, 10)),
+    *(f"LPT{index}" for index in range(1, 10)),
+}
 
 
 def install_drive_root():
@@ -133,7 +139,16 @@ def mesh_like_job_kind(job):
 
 
 def safe_name(name):
-    if not name or any(part in name for part in ("..", "/", "\\")) or not re.match(r"^[A-Za-z0-9_.-]+$", name):
+    device_base = str(name or "").split(".", 1)[0].upper()
+    if (
+        not name
+        or len(name) > 120
+        or name.startswith(".")
+        or name.endswith(".")
+        or any(part in name for part in ("..", "/", "\\"))
+        or not re.fullmatch(r"[A-Za-z0-9_.-]+", name)
+        or device_base in WINDOWS_DEVICE_NAMES
+    ):
         raise ValueError("Invalid scene name")
     return name
 
@@ -427,6 +442,109 @@ def latest_iteration(scene):
             except ValueError:
                 pass
     return max(iterations) if iterations else None
+
+
+def inspect_training_point_cloud(path):
+    """Return a lightweight PLY summary or raise when a training result is incomplete."""
+    path = Path(path)
+    if not path.is_file():
+        raise FileNotFoundError(f"Training point cloud is missing: {path}")
+    if path.stat().st_size <= 0:
+        raise ValueError(f"Training point cloud is empty: {path}")
+
+    header_lines = []
+    header_size = 0
+    with path.open("rb") as stream:
+        while header_size < 1024 * 1024:
+            line = stream.readline()
+            if not line:
+                break
+            header_size += len(line)
+            header_lines.append(line.decode("latin-1", errors="replace").strip())
+            if header_lines[-1] == "end_header":
+                break
+    if not header_lines or header_lines[0] != "ply" or "end_header" not in header_lines:
+        raise ValueError(f"Training point cloud has an invalid PLY header: {path}")
+    format_lines = [line for line in header_lines if line.startswith("format ")]
+    if not format_lines or format_lines[0].split()[1] not in {"ascii", "binary_little_endian"}:
+        raise ValueError(f"Training point cloud uses an unsupported PLY format: {path}")
+    vertex_count = 0
+    vertex_properties = []
+    vertex_stride = 0
+    reading_vertex_properties = False
+    scalar_sizes = {
+        "char": 1, "uchar": 1, "int8": 1, "uint8": 1,
+        "short": 2, "ushort": 2, "int16": 2, "uint16": 2,
+        "int": 4, "uint": 4, "int32": 4, "uint32": 4,
+        "float": 4, "float32": 4, "double": 8, "float64": 8,
+    }
+    for line in header_lines:
+        match = re.fullmatch(r"element\s+vertex\s+(\d+)", line)
+        if match:
+            vertex_count = int(match.group(1))
+            reading_vertex_properties = True
+            continue
+        if line.startswith("element "):
+            reading_vertex_properties = False
+            continue
+        if reading_vertex_properties and line.startswith("property "):
+            parts = line.split()
+            if len(parts) != 3 or parts[1] not in scalar_sizes:
+                raise ValueError(f"Training point cloud has an unsupported vertex property: {line}")
+            vertex_stride += scalar_sizes[parts[1]]
+            vertex_properties.append(parts[2])
+    if vertex_count <= 0:
+        raise ValueError(f"Training point cloud contains no vertices: {path}")
+    missing_properties = {"x", "y", "z", "opacity", "scale_0", "rot_0"}.difference(
+        vertex_properties
+    )
+    if missing_properties:
+        raise ValueError(
+            "Training point cloud is missing Gaussian properties "
+            f"{', '.join(sorted(missing_properties))}: {path}"
+        )
+    if path.stat().st_size <= header_size:
+        raise ValueError(f"Training point cloud contains a header but no vertex data: {path}")
+    if format_lines[0].split()[1] == "binary_little_endian":
+        expected_size = header_size + vertex_count * vertex_stride
+        if path.stat().st_size < expected_size:
+            raise ValueError(
+                f"Training point cloud is truncated ({path.stat().st_size} < {expected_size} bytes): {path}"
+            )
+    return {
+        "path": str(path.resolve()),
+        "vertex_count": vertex_count,
+        "properties": vertex_properties,
+    }
+
+
+def training_point_cloud(scene, expected_iteration=None):
+    """Locate and validate the requested or latest usable training checkpoint."""
+    point_cloud_root = model_dir(scene) / "point_cloud"
+    if expected_iteration is not None:
+        iterations = [int(expected_iteration)]
+    elif point_cloud_root.is_dir():
+        iterations = []
+        for child in point_cloud_root.iterdir():
+            match = re.fullmatch(r"iteration_(\d+)", child.name)
+            if child.is_dir() and match:
+                iterations.append(int(match.group(1)))
+        iterations.sort(reverse=True)
+    else:
+        iterations = []
+
+    last_error = None
+    for iteration in iterations:
+        candidate = point_cloud_root / f"iteration_{iteration}" / "point_cloud.ply"
+        try:
+            summary = inspect_training_point_cloud(candidate)
+            summary["iteration"] = iteration
+            return summary
+        except (OSError, ValueError) as exc:
+            last_error = exc
+    if expected_iteration is not None and last_error is not None:
+        raise RuntimeError(str(last_error)) from last_error
+    return None
 
 
 def detect_ply_backend(scene, iteration=None):
@@ -4125,6 +4243,12 @@ def job_snapshot(job):
         "resume_from_scene": job.get("resume_from_scene"),
         "resume_checkpoint": job.get("resume_checkpoint"),
         "resume_checkpoint_iteration": job.get("resume_checkpoint_iteration"),
+        "iteration": job.get("iteration"),
+        "total_iterations": job.get("total_iterations"),
+        "progressPercent": job.get("progressPercent"),
+        "latest_iteration": job.get("latest_iteration"),
+        "point_cloud_path": job.get("point_cloud_path"),
+        "partial_point_cloud_path": job.get("partial_point_cloud_path"),
         "log": job["log"][-240:],
         "cancel_requested": bool(job.get("cancel_requested")),
     }
@@ -4156,6 +4280,16 @@ def add_job_log(job, message):
         return
     lock = MESH_LOCK if mesh_like_job_kind(job) else SPLAT_LOCK if job.get("kind") == "splat_export" else TRAIN_LOCK
     with lock:
+        if not mesh_like_job_kind(job) and job.get("kind") != "splat_export":
+            progress_match = TRAINING_PROGRESS_PATTERN.search(line)
+            if progress_match:
+                iteration = int(progress_match.group(1))
+                total_iterations = max(int(progress_match.group(2)), 1)
+                job["iteration"] = max(0, min(iteration, total_iterations))
+                job["total_iterations"] = total_iterations
+                job["progressPercent"] = max(
+                    0, min(100, round(job["iteration"] / total_iterations * 100))
+                )
         job["log"].append(line)
         job["updated_at"] = time.time()
         if job.get("kind") == "splat_export":
@@ -4351,7 +4485,10 @@ def training_environment_report(backend="3dgs"):
     runtime_ok, runtime_detail = python_probe(
         python_path,
         env,
-        "import torch, cv2; from PIL import Image; import diff_gaussian_rasterization, simple_knn; print('cuda', torch.cuda.is_available())",
+        "import torch, cv2; from PIL import Image; import diff_gaussian_rasterization; "
+        "from simple_knn._C import distCUDA2; "
+        "assert torch.cuda.is_available(), 'PyTorch cannot access a CUDA device'; "
+        "print('cuda', torch.cuda.get_device_name(0))",
     )
     report = {
         "backend": backend,
@@ -4416,7 +4553,25 @@ def ensure_training_environment(backend="3dgs"):
     if not report["colmap_exists"]:
         problems.append(f"Missing COLMAP executable: {report['colmap']}")
     if not report["opencv_ok"]:
-        problems.append(f"OpenCV unavailable for video import: {report['opencv_error']}")
+        problems.append(
+            f"OpenCV unavailable for training image/depth loading: {report['opencv_error']}"
+        )
+    if not report["runtime_imports_ok"]:
+        detail = report["runtime_imports_error"]
+        lowered_detail = detail.lower()
+        if (
+            "winerror 4551" in lowered_detail
+            or "application control policy" in lowered_detail
+            or "アプリケーション制御ポリシー" in lowered_detail
+            or "应用控制策略" in lowered_detail
+        ):
+            problems.append(
+                "Windows Enterprise Application Control blocked a PyTorch/CUDA training library. "
+                "Ask the system administrator to allow or sign the blocked runtime; the application "
+                f"will not bypass enterprise policy. Details: {detail}"
+            )
+        else:
+            problems.append(f"3DGS PyTorch/CUDA runtime unavailable: {detail}")
     if problems:
         raise RuntimeError("; ".join(problems))
     return report
@@ -5201,6 +5356,11 @@ def training_command(backend, dataset, output, options, start_checkpoint=None):
             command.extend(["--start_checkpoint", str(start_checkpoint)])
         return command
 
+    recovery_iterations = sorted({
+        iterations,
+        *(marker for marker in (1000, 3000, 7000, 15000) if marker < iterations),
+    })
+    recovery_arguments = [str(value) for value in recovery_iterations]
     command = [
         training_python("3dgs"),
         "train.py",
@@ -5217,9 +5377,10 @@ def training_command(backend, dataset, output, options, start_checkpoint=None):
         "--test_iterations",
         str(iterations),
         "--save_iterations",
-        str(iterations),
+        *recovery_arguments,
         "--checkpoint_iterations",
-        str(iterations),
+        *recovery_arguments,
+        "--disable_viewer",
     ]
     if options["antialiasing"]:
         command.append("--antialiasing")
@@ -5259,7 +5420,12 @@ def run_training_job(job, run_convert, quality, overwrite):
         add_job_log(job, f"COLMAP: {report['colmap']}")
         add_job_log(job, "OpenCV: OK")
         dataset = Path(job.get("dataset_path") or (DATASETS_DIR / job["scene"]))
-        output = OUTPUT_DIR / job["output_scene"]
+        output_root = OUTPUT_DIR.resolve()
+        output = OUTPUT_DIR / safe_name(job["output_scene"])
+        if output.exists() and output.resolve().parent != output_root:
+            raise ValueError(
+                f"Training output resolves outside the configured output root: {output}"
+            )
         images_dir = colmap_image_input_path(dataset)
         if not images_dir.exists() or not any(p.suffix.lower() in IMAGE_EXTS for p in images_dir.iterdir()):
             raise ValueError(f"No training images found: {images_dir}")
@@ -5290,6 +5456,14 @@ def run_training_job(job, run_convert, quality, overwrite):
 
         options = training_options_from_payload(backend, quality, job.get("train_options"))
         options = resolve_training_options_for_environment(backend, options, job)
+        with TRAIN_LOCK:
+            job["iteration"] = int(job.get("resume_checkpoint_iteration") or 0)
+            job["total_iterations"] = int(options["iterations"])
+            job["progressPercent"] = max(
+                0,
+                min(100, round(job["iteration"] / max(job["total_iterations"], 1) * 100)),
+            )
+            persist_train_job(job)
         add_job_log(job, f"Training preset: {quality}, iterations={options['iterations']}, resolution={options['resolution']}")
         if backend == "3dgs":
             add_job_log(
@@ -5324,16 +5498,31 @@ def run_training_job(job, run_convert, quality, overwrite):
         command = training_command(backend, dataset, output, options, start_checkpoint=start_checkpoint)
         set_job_stage(job, "running", "train")
         run_logged(job, command, TWO_DGS_DIR if backend == "2dgs" else GAUSSIAN_DIR, backend)
+        result = training_point_cloud(job["output_scene"], options["iterations"])
+        if result is None:
+            raise RuntimeError(
+                f"Training command completed but iteration {options['iterations']} produced no point_cloud.ply"
+            )
         write_training_metadata(output, backend, quality, options)
         with TRAIN_LOCK:
             job["status"] = "done"
             job["stage"] = "done"
             job["returncode"] = 0
             job["updated_at"] = time.time()
-            job["latest_iteration"] = latest_iteration(job["output_scene"])
+            job["iteration"] = int(result["iteration"])
+            job["total_iterations"] = int(options["iterations"])
+            job["progressPercent"] = 100
+            job["latest_iteration"] = int(result["iteration"])
+            job["point_cloud_path"] = result["path"]
+            job["point_count"] = int(result["vertex_count"])
             persist_train_job(job)
-        add_job_log(job, f"{backend.upper()} training complete: output/{job['output_scene']}")
+        add_job_log(job, f"{backend.upper()} training complete: {result['path']}")
     except Exception as exc:
+        partial_result = None
+        try:
+            partial_result = training_point_cloud(job.get("output_scene"))
+        except Exception:
+            partial_result = None
         with TRAIN_LOCK:
             if job.get("cancel_requested"):
                 job["status"] = "cancelled"
@@ -5344,8 +5533,17 @@ def run_training_job(job, run_convert, quality, overwrite):
             job["error"] = str(exc)
             job["returncode"] = 1
             job["updated_at"] = time.time()
+            if partial_result is not None:
+                job["latest_iteration"] = int(partial_result["iteration"])
+                job["partial_point_cloud_path"] = partial_result["path"]
             persist_train_job(job)
         add_job_log(job, f"ERROR: {exc}")
+        if partial_result is not None:
+            add_job_log(
+                job,
+                "Latest usable checkpoint was preserved: "
+                f"iteration {partial_result['iteration']} at {partial_result['path']}",
+            )
 
 
 def run_colmap_alignment_job(job):
@@ -5460,6 +5658,12 @@ def start_training(
         "process": None,
         "colmap_options": colmap_options_from_payload(colmap_options or {}),
         "train_options": train_options if isinstance(train_options, dict) else {},
+        "iteration": 0,
+        "total_iterations": None,
+        "progressPercent": 0,
+        "latest_iteration": None,
+        "point_cloud_path": None,
+        "partial_point_cloud_path": None,
         "log": [],
     }
     with TRAIN_LOCK:

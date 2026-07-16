@@ -16,6 +16,7 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QRegularExpression>
+#include <QSet>
 #include <QSpinBox>
 #include <QVBoxLayout>
 
@@ -152,9 +153,27 @@ void TrainingDialog::accept() {
 
   const TrainingConfiguration config = configuration();
   static const QRegularExpression validSceneName(QStringLiteral("^[A-Za-z0-9_.-]+$"));
-  if (!validSceneName.match(config.outputScene).hasMatch()) {
-    QMessageBox::critical(this, QStringLiteral("输出名称无效"),
-                          QStringLiteral("输出名称只能包含英文字母、数字、点、下划线和连字符。"));
+  static const QSet<QString> windowsDeviceNames = {
+      QStringLiteral("CON"),  QStringLiteral("PRN"),  QStringLiteral("AUX"),
+      QStringLiteral("NUL"),  QStringLiteral("COM1"), QStringLiteral("COM2"),
+      QStringLiteral("COM3"), QStringLiteral("COM4"), QStringLiteral("COM5"),
+      QStringLiteral("COM6"), QStringLiteral("COM7"), QStringLiteral("COM8"),
+      QStringLiteral("COM9"), QStringLiteral("LPT1"), QStringLiteral("LPT2"),
+      QStringLiteral("LPT3"), QStringLiteral("LPT4"), QStringLiteral("LPT5"),
+      QStringLiteral("LPT6"), QStringLiteral("LPT7"), QStringLiteral("LPT8"),
+      QStringLiteral("LPT9")};
+  const QString deviceBase =
+      config.outputScene.section(QLatin1Char('.'), 0, 0).toUpper();
+  if (!validSceneName.match(config.outputScene).hasMatch() ||
+      config.outputScene.size() > 120 ||
+      config.outputScene.startsWith(QLatin1Char('.')) ||
+      config.outputScene.endsWith(QLatin1Char('.')) ||
+      config.outputScene.contains(QStringLiteral("..")) ||
+      windowsDeviceNames.contains(deviceBase)) {
+    QMessageBox::critical(
+        this, QStringLiteral("输出名称无效"),
+        QStringLiteral("输出名称必须是安全的 Windows 文件夹名，且只能包含英文字母、"
+                       "数字、点、下划线和连字符。"));
     return;
   }
   if (config.outputRoot.isEmpty() ||

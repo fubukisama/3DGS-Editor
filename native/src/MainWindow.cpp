@@ -9,6 +9,7 @@
 #include "MediaProjectBootstrap.h"
 #include "ReconstructionDialog.h"
 #include "TrainingDialog.h"
+#include "TrainingEnvironmentProbe.h"
 #include "TrainingOutputLocator.h"
 
 #include <QAction>
@@ -67,6 +68,7 @@
 #include <QVBoxLayout>
 
 #include <algorithm>
+#include <functional>
 
 namespace gsw {
 
@@ -252,6 +254,75 @@ QString safeFileName(QString value) {
   return value.isEmpty() ? QStringLiteral("gaussian-scene") : value;
 }
 
+struct ResolvedTrainingPointCloud final {
+  QString path;
+  int iteration = 0;
+  PlyMetadata metadata;
+};
+
+std::optional<ResolvedTrainingPointCloud>
+resolveTrainingPointCloud(const QString &outputDirectory,
+                          const std::optional<int> expectedIteration,
+                          QString *errorMessage = nullptr) {
+  const QDir pointCloudRoot(
+      QDir(outputDirectory).filePath(QStringLiteral("point_cloud")));
+  QList<int> iterations;
+  if (expectedIteration.has_value()) {
+    iterations.append(expectedIteration.value());
+  } else if (pointCloudRoot.exists()) {
+    static const QRegularExpression iterationPattern(
+        QStringLiteral(R"(^iteration_(\d+)$)"));
+    const QFileInfoList entries = pointCloudRoot.entryInfoList(
+        QDir::Dirs | QDir::NoDotAndDotDot | QDir::NoSymLinks);
+    for (const QFileInfo &entry : entries) {
+      const QRegularExpressionMatch match =
+          iterationPattern.match(entry.fileName());
+      if (!match.hasMatch()) {
+        continue;
+      }
+      bool parsed = false;
+      const int iteration = match.captured(1).toInt(&parsed);
+      if (parsed) {
+        iterations.append(iteration);
+      }
+    }
+    std::sort(iterations.begin(), iterations.end(), std::greater<int>());
+  }
+
+  QString lastError;
+  for (const int iteration : iterations) {
+    const QString path = pointCloudRoot.filePath(
+        QStringLiteral("iteration_%1/point_cloud.ply").arg(iteration));
+    QString inspectionError;
+    const PlyMetadata metadata =
+        WorkspaceDocument::inspectPly(path, &inspectionError);
+    if (metadata.valid && metadata.vertexCount > 0 && metadata.fileSize > 0 &&
+        metadata.looksLikeGaussianSplat()) {
+      return ResolvedTrainingPointCloud{QFileInfo(path).absoluteFilePath(),
+                                        iteration, metadata};
+    }
+    lastError = inspectionError.isEmpty()
+                    ? QStringLiteral("PLY 缺少有效顶点或 3DGS 属性：%1")
+                          .arg(QDir::toNativeSeparators(path))
+                    : inspectionError;
+  }
+
+  if (errorMessage != nullptr) {
+    if (!lastError.isEmpty()) {
+      *errorMessage = lastError;
+    } else if (expectedIteration.has_value()) {
+      *errorMessage =
+          QStringLiteral("未找到第 %1 次迭代的 point_cloud.ply：%2")
+              .arg(expectedIteration.value())
+              .arg(QDir::toNativeSeparators(pointCloudRoot.absolutePath()));
+    } else {
+      *errorMessage = QStringLiteral("尚未生成可用的 3DGS point_cloud.ply：%1")
+                          .arg(QDir::toNativeSeparators(
+                              pointCloudRoot.absolutePath()));
+    }
+  }
+  return std::nullopt;
+}
 QString workerStageLabel(const QString &stage) {
   static const QHash<QString, QString> labels = {
       {QStringLiteral("queued"), QStringLiteral("排队")},
@@ -1237,6 +1308,7 @@ void MainWindow::connectServices() {
                 exitCode == 130 || mProcessSupervisor.wasStopRequested();
             bool effectiveSucceeded = succeeded;
             bool recoveryFailed = false;
+            QString completionDetail;
 
             if (mPendingDatasetImport.has_value() &&
                 mPendingDatasetImport->taskName == taskName) {
@@ -1303,45 +1375,74 @@ void MainWindow::connectServices() {
               }
             }
 
-            if (mPendingTrainingResult.has_value() &&
-                mPendingTrainingResult->taskName == taskName) {
-              const PendingTrainingResult pending = *mPendingTrainingResult;
-              mPendingTrainingResult.reset();
+            if (mPendingTraining.has_value() &&
+                mPendingTraining->taskName == taskName) {
+              const PendingTraining pending = *mPendingTraining;
+              mPendingTraining.reset();
               if (effectiveSucceeded) {
-                const TrainingOutputScene scene =
-                    findLatestTrainingOutputScene(pending.outputSceneRoot);
-                if (!scene.isValid()) {
+                QString resultError;
+                const std::optional<ResolvedTrainingPointCloud> result =
+                    resolveTrainingPointCloud(
+                        pending.outputDirectory, pending.expectedIterations,
+                        &resultError);
+                if (!result.has_value()) {
                   effectiveSucceeded = false;
-                  const QString detail =
-                      QStringLiteral("训练进程已完成，但输出目录中没有找到 point_cloud/iteration_*/point_cloud.ply：\n%1")
-                          .arg(QDir::toNativeSeparators(pending.outputSceneRoot));
-                  appendTaskEvent(detail);
-                  showError(QStringLiteral("训练结果无效"), detail);
-                } else if (!pathsReferToSameLocation(mWorkspace.rootPath(),
-                                                     pending.projectRoot)) {
+                  completionDetail = QStringLiteral("训练输出无效");
+                  showError(
+                      QStringLiteral("训练结果无效"),
+                      QStringLiteral("训练进程已正常退出，但最终模型未通过校验。\n\n%1")
+                          .arg(resultError));
+                } else if (!pathsReferToSameLocation(
+                               mWorkspace.rootPath(), pending.projectRoot)) {
+                  completionDetail =
+                      QStringLiteral("模型已生成（当前工程已切换）");
                   appendTaskEvent(
-                      QStringLiteral("训练已完成，但当前工程已切换，因此未自动载入：%1")
-                          .arg(QDir::toNativeSeparators(scene.path)));
+                      QStringLiteral("训练模型已生成，但当前工程已切换，未自动关联：%1")
+                          .arg(QDir::toNativeSeparators(result->path)));
                 } else {
                   QString sceneError;
-                  if (!mWorkspace.setScenePath(scene.path, &sceneError)) {
+                  if (!mWorkspace.setScenePath(result->path, &sceneError)) {
                     effectiveSucceeded = false;
-                    appendTaskEvent(QStringLiteral("训练结果无法载入：%1")
-                                        .arg(sceneError));
+                    completionDetail = QStringLiteral("模型关联失败");
                     showError(QStringLiteral("无法载入训练结果"), sceneError);
                   } else {
+                    completionDetail =
+                        QStringLiteral("迭代 %1 · %2 个高斯")
+                            .arg(result->iteration)
+                            .arg(result->metadata.vertexCount);
                     QString saveError;
                     if (!mWorkspace.projectFilePath().isEmpty() &&
                         !mWorkspace.save({}, &saveError)) {
+                      QMessageBox::warning(
+                          this, QStringLiteral("训练结果已载入，但工程未保存"),
+                          QStringLiteral("模型已载入视口，但工程文件自动保存失败。\n\n%1")
+                              .arg(saveError));
                       appendTaskEvent(
                           QStringLiteral("训练结果已载入，但工程自动保存失败：%1")
                               .arg(saveError));
                     }
                     appendTaskEvent(
-                        QStringLiteral("已自动载入训练结果（迭代 %1）：%2")
-                            .arg(scene.iteration)
-                            .arg(QDir::toNativeSeparators(scene.path)));
+                        QStringLiteral("训练结果已校验并载入：迭代 %1，%2 个高斯，%3")
+                            .arg(result->iteration)
+                            .arg(result->metadata.vertexCount)
+                            .arg(QDir::toNativeSeparators(result->path)));
+                    statusBar()->showMessage(
+                        QStringLiteral("%1 训练完成，模型已载入")
+                            .arg(pending.backend.toUpper()),
+                        8000);
                   }
+                }
+              } else {
+                const std::optional<ResolvedTrainingPointCloud> partial =
+                    resolveTrainingPointCloud(pending.outputDirectory,
+                                              std::nullopt);
+                if (partial.has_value()) {
+                  completionDetail =
+                      QStringLiteral("保留迭代 %1").arg(partial->iteration);
+                  appendTaskEvent(
+                      QStringLiteral("训练未完成，已保留最近可用检查点：迭代 %1，%2")
+                          .arg(partial->iteration)
+                          .arg(QDir::toNativeSeparators(partial->path)));
                 }
               }
             }
@@ -1360,10 +1461,14 @@ void MainWindow::connectServices() {
                                                    : QColor(211, 95, 95));
               if (!effectiveSucceeded) {
                 mTaskTable->item(mActiveTaskRow, 3)->setText(
-                    recoveryFailed
+                    !completionDetail.isEmpty()
+                        ? completionDetail
+                        : recoveryFailed
                         ? QStringLiteral("事务恢复失败")
                         : cancelled ? QStringLiteral("用户取消")
                                     : QStringLiteral("退出码 %1").arg(exitCode));
+              } else if (!completionDetail.isEmpty()) {
+                mTaskTable->item(mActiveTaskRow, 3)->setText(completionDetail);
               }
             }
 
@@ -2539,6 +2644,39 @@ void MainWindow::startTraining() {
   }
   const TrainingConfiguration config = dialog.configuration();
 
+  if (!confirmDiscardSceneEdits()) {
+    return;
+  }
+
+  statusBar()->showMessage(
+      QStringLiteral("正在预检 %1 训练环境…").arg(config.backend.toUpper()));
+  QApplication::setOverrideCursor(Qt::WaitCursor);
+  const TrainingEnvironmentProbeResult preflight =
+      TrainingEnvironmentProbe::run(
+          python, root, mWorkspace.datasetPath(), config.backend,
+          config.runColmap, pythonProcessEnvironment(python));
+  QApplication::restoreOverrideCursor();
+  statusBar()->clearMessage();
+  if (!preflight.ready) {
+    const QString guidance = preflight.policyBlocked &&
+                                     !preflight.errorMessage.contains(
+                                         QStringLiteral("系统管理员"))
+                                 ? QStringLiteral(
+                                       "\n\n这是系统级企业应用控制限制，需要管理员允许或签名被拦截的运行库；"
+                                       "桌面端不会绕过安全策略。")
+                                 : QString();
+    showError(QStringLiteral("%1 训练环境不可用").arg(config.backend.toUpper()),
+              QStringLiteral("所选 Python：%1\n\n%2%3")
+                  .arg(preflight.python, preflight.errorMessage, guidance));
+    return;
+  }
+  appendTaskEvent(
+      QStringLiteral("训练预检通过：%1 张图像，%2，CUDA：%3")
+          .arg(preflight.imageCount)
+          .arg(preflight.hasReconstruction ? QStringLiteral("已有稀疏重建")
+                                           : QStringLiteral("将运行 COLMAP"))
+          .arg(preflight.cudaDevice));
+
   const QString jobsRoot = QDir(mWorkspace.rootPath()).filePath(QStringLiteral(".gsw/jobs"));
   const QString trainingJobStore = QDir(jobsRoot).filePath(QStringLiteral("training"));
   if (!QDir().mkpath(trainingJobStore)) {
@@ -2576,17 +2714,18 @@ void MainWindow::startTraining() {
   const QString taskName = QStringLiteral("%1 训练 | %2 | %3 次迭代")
                                .arg(config.backend.toUpper(), config.quality)
                                .arg(config.iterations);
-  mPendingTrainingResult = PendingTrainingResult{
+  mPendingTraining = PendingTraining{
       taskName,
+      comparablePath(mWorkspace.rootPath()),
       QDir(config.outputRoot).filePath(config.outputScene),
-      mWorkspace.rootPath(),
-  };
+      config.backend,
+      config.iterations};
   const bool started = mProcessSupervisor.start(
       taskName,
       python, {workerScript, QStringLiteral("--config"), configPath}, root,
       pythonProcessEnvironment(python), true);
   if (!started) {
-    mPendingTrainingResult.reset();
+    mPendingTraining.reset();
     QMessageBox::information(this, QStringLiteral("任务繁忙"), QStringLiteral("请等待当前任务结束后再试。"));
   } else {
     appendTaskEvent(QStringLiteral("训练配置已保存：%1").arg(QDir::toNativeSeparators(configPath)));

@@ -546,6 +546,7 @@ if ($Package) {
   $RequiredBackendFiles = @(
     "native\worker\gsw_worker.py",
     "native\worker\import_preflight.py",
+    "native\worker\training_preflight.py",
     "crop_editor\server.py",
     "crop_editor\video_extract.py",
     "scripts\check_3dgs_env.ps1",

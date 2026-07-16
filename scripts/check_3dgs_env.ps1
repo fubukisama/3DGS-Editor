@@ -149,7 +149,7 @@ Test-Tool -Name "Python media dependencies" -Executable $PythonExecutable -Argum
 )
 Test-Tool -Name "3DGS CUDA runtime" -Executable $PythonExecutable -Arguments @(
     "-c",
-    "import torch, cv2; from PIL import Image; import diff_gaussian_rasterization, simple_knn, fused_ssim; assert torch.cuda.is_available(), 'PyTorch CUDA is unavailable'; print('torch', torch.__version__, 'cuda', torch.version.cuda, 'device', torch.cuda.get_device_name(0)); print('3DGS imports OK')"
+    "import torch, cv2; from PIL import Image; import diff_gaussian_rasterization, fused_ssim; from simple_knn._C import distCUDA2; assert torch.cuda.is_available(), 'PyTorch CUDA is unavailable'; print('torch', torch.__version__, 'cuda', torch.version.cuda, 'device', torch.cuda.get_device_name(0)); print('3DGS imports OK')"
 )
 Test-Tool -Name "Conda" -Executable $CondaExecutable -Arguments @("--version")
 Test-Tool -Name "Git" -Executable "git" -Arguments @("--version")

@@ -51,6 +51,7 @@ function Copy-FilteredTree {
 $StaticFiles = @(
   @{ Source = "native\worker\gsw_worker.py"; Destination = "native\worker\gsw_worker.py" },
   @{ Source = "native\worker\import_preflight.py"; Destination = "native\worker\import_preflight.py" },
+  @{ Source = "native\worker\training_preflight.py"; Destination = "native\worker\training_preflight.py" },
   @{ Source = "crop_editor\server.py"; Destination = "crop_editor\server.py" },
   @{ Source = "crop_editor\video_extract.py"; Destination = "crop_editor\video_extract.py" },
   @{ Source = "scripts\check_3dgs_env.ps1"; Destination = "scripts\check_3dgs_env.ps1" },
@@ -81,6 +82,7 @@ $Manifest = [ordered]@{
   components = @(
     "native/worker/gsw_worker.py",
     "native/worker/import_preflight.py",
+    "native/worker/training_preflight.py",
     "crop_editor/server.py",
     "crop_editor/video_extract.py",
     "gaussian-splatting",

@@ -67,6 +67,8 @@ qt_add_executable(GaussianSceneWorkbench WIN32
   src/ScreenSpaceSelection.h
   src/TrainingDialog.cpp
   src/TrainingDialog.h
+  src/TrainingEnvironmentProbe.cpp
+  src/TrainingEnvironmentProbe.h
   src/TrainingOutputLocator.cpp
   src/TrainingOutputLocator.h
   src/WorkspaceDocument.cpp

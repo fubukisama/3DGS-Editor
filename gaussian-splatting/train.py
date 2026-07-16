@@ -71,6 +71,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     ema_Ll1depth_for_log = 0.0
 
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
+    progress_interval = max(1, opt.iterations // 100)
     first_iter += 1
     for iteration in range(first_iter, opt.iterations + 1):
         if network_gui.conn == None:
@@ -153,6 +154,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             if iteration % 10 == 0:
                 progress_bar.set_postfix({"Loss": f"{ema_loss_for_log:.{7}f}", "Depth Loss": f"{ema_Ll1depth_for_log:.{7}f}"})
                 progress_bar.update(10)
+            if iteration == first_iter or iteration % progress_interval == 0 or iteration == opt.iterations:
+                print("\n[gsw-training-progress] {}/{}".format(iteration, opt.iterations), flush=True)
             if iteration == opt.iterations:
                 progress_bar.close()
 
