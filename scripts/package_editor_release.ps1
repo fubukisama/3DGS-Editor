@@ -75,10 +75,10 @@ $excludeCommon = @(
   "desktop_editor.log", "gaussian_scene_workbench.log", "crop_editor_server_upgrade.log", "crop_editor_server_upgrade.err.log"
 )
 
-Copy-TreeFiltered (Join-Path $Root "crop_editor") (Join-Path $PackageDir "crop_editor") @("__pycache__", ".pytest_cache", ".preview", ".jobs")
+Copy-TreeFiltered (Join-Path $Root "crop_editor") (Join-Path $PackageDir "crop_editor") @("__pycache__", ".pytest_cache", ".preview", ".jobs", "node_modules")
 Copy-TreeFiltered (Join-Path $Root "scripts") (Join-Path $PackageDir "scripts") @("__pycache__", ".pytest_cache")
 Copy-TreeFiltered (Join-Path $Root "training_kit") (Join-Path $PackageDir "training_kit") @("__pycache__", ".pytest_cache")
-Copy-TreeFiltered (Join-Path $Root "gaussian-splatting") (Join-Path $PackageDir "gaussian-splatting") @(".git", "output", "data_device", "__pycache__")
+Copy-TreeFiltered (Join-Path $Root "gaussian-splatting") (Join-Path $PackageDir "gaussian-splatting") @(".git", "output", "data_device", "__pycache__", "build")
 
 if ($IncludeAdvancedMeshBackends -and (Test-Path -LiteralPath (Join-Path $Root "SuGaR"))) {
   Copy-TreeFiltered (Join-Path $Root "SuGaR") (Join-Path $PackageDir "SuGaR") @(".git", "output", "__pycache__")
