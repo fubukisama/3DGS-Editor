@@ -4,11 +4,11 @@
     "packageVersion":  "0.2.5",
     "releaseTag":  "v0.2.5",
     "packageName":  "Gaussian-Scene-Workbench-0.2.5-win-x64.zip",
-    "updatedAt":  "2026-07-16T14:34:10+09:00",
+    "updatedAt":  "2026-07-16T14:42:19+09:00",
     "updatedBy":  "Ishida_Lab",
     "machine":  "DESKTOP-UTA4K5M",
     "gitBranch":  "main",
-    "gitCommit":  "ba76a3c",
-    "gitDirty":  true,
+    "gitCommit":  "0742173",
+    "gitDirty":  false,
     "note":  "Harden 3DGS runtime preflight and Smart App Control compatibility"
 }
