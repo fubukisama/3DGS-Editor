@@ -342,6 +342,29 @@ class TrainingBackendTests(unittest.TestCase):
         self.assertEqual(options["mapper_ba_global_function_tolerance"], "0.000001")
         self.assertEqual(options["mapper_ba_global_max_num_iterations"], 50)
 
+    def test_colmap_executable_honors_colmap_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            executable = Path(tmp) / "colmap.exe"
+            executable.write_bytes(b"fixture")
+            with mock.patch.dict(
+                server.os.environ,
+                {"COLMAP_EXE": "", "COLMAP_PATH": str(executable)},
+                clear=False,
+            ):
+                self.assertEqual(server.colmap_executable(), executable)
+
+    def test_versioned_colmap_candidates_select_newest_version(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            install_root = Path(tmp) / "COLMAP"
+            for version in ("3.13.0", "4.1.0"):
+                executable = install_root / version / "bin" / "colmap.exe"
+                executable.parent.mkdir(parents=True)
+                executable.write_bytes(b"fixture")
+
+            candidates = server.versioned_colmap_candidates([install_root])
+
+            self.assertEqual(candidates[0], install_root / "4.1.0" / "bin" / "colmap.exe")
+
     def test_colmap_options_robust_preset_limits_global_ba_and_relaxes_registration(self):
         options = server.colmap_options_from_payload({"preset": "robust"})
 

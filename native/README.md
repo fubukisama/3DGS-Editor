@@ -8,7 +8,7 @@
 - Dockable project tree, inspector, task queue, and process log.
 - Portable `.gsw.json` project files with relative asset paths.
 - Managed photo/video import with recursive discovery, metadata manifest, frame extraction, structured progress, and crash-safe journaled publish/recovery (including project reopen); existing image/COLMAP datasets can also be linked in place.
-- Native COLMAP reconstruction dialog with standard, robust, and sequential presets, explicit E-drive executable selection, cache overwrite protection, live logs, cancellation, and sparse-model validation.
+- Native COLMAP reconstruction dialog with standard, robust, and sequential presets, automatic newest-version discovery on the application drive, cache overwrite protection, live logs, cancellation, and sparse-model validation.
 - Native OpenGL point rendering plus depth-sorted screen-space Gaussian splats using activated scale, normalized rotation, sigmoid opacity, and SH-DC color.
 - Optional camera visualization that walks upward from the loaded scene to find a standard 3DGS `cameras.json`, with one camera-trajectory toggle for the frustums and capture path.
 - Automatic Gaussian/point mode selection, deterministic large-scene sampling, scene-bounds camera fitting, and a manual diagnostic fallback.
@@ -25,7 +25,7 @@ Rectangle, lasso, and brush selection operate on every source vertex even when d
 
 Crop export supports ASCII and binary little-endian point/Gaussian PLY files. It copies retained vertex records without re-encoding custom Gaussian fields, updates the vertex count, writes atomically, and refuses indexed mesh PLY files whose face indices would become invalid.
 
-COLMAP is an external native dependency and is never assumed to live on the system drive. The application checks the saved path, `COLMAP_PATH`/`COLMAP_EXE`, repository-local tool folders, the current drive, and `PATH`; if none exists, the reconstruction dialog requires the user to select `colmap.exe` before a task can start.
+COLMAP is an external native dependency and is never assumed to live on the system drive. The application checks the saved path, `COLMAP_PATH`/`COLMAP_EXE`, repository-local tool folders, the newest semantic version under `<application-drive>:\Tools\COLMAP`, legacy locations, and `PATH`; if none exists, the reconstruction dialog requires the user to select `colmap.exe` before a task can start. Official COLMAP 4.1.0 CUDA has been exercised through the complete native worker pipeline; see `docs/COLMAP_SETUP.md`.
 
 Feature parity and release gates are tracked in `docs/NATIVE_PARITY.md` (packaged as `NATIVE_PARITY.md`).
 
@@ -50,6 +50,12 @@ powershell -ExecutionPolicy Bypass -File scripts\build_native.ps1 -Configuration
 ```
 
 Set `GSW_NATIVE_QT_ROOT` or pass `-QtRoot` when Qt is installed elsewhere.
+
+Install or verify COLMAP on a non-system drive:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install_colmap.ps1 -InstallRoot E:\Tools\COLMAP -Variant cuda
+```
 
 Generate the deterministic Gaussian renderer QA project:
 

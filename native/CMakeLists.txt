@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 
 project(
   GaussianSceneWorkbenchNative
-  VERSION 0.3.0
+  VERSION 0.3.1
   DESCRIPTION "Native desktop workspace for Gaussian scene reconstruction"
   LANGUAGES CXX
 )
@@ -14,7 +14,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
-set(GSW_RELEASE_DATE "2026-07-12" CACHE STRING "Release date shown by the application")
+set(GSW_RELEASE_DATE "2026-07-16" CACHE STRING "Release date shown by the application")
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/build_manifest.json" GSW_BUILD_MANIFEST_JSON)
 string(JSON GSW_APP_USER_MODEL_ID GET "${GSW_BUILD_MANIFEST_JSON}" appUserModelId)
 string(LENGTH "${GSW_APP_USER_MODEL_ID}" GSW_APP_USER_MODEL_ID_LENGTH)

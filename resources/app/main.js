@@ -6,6 +6,7 @@ const path = require("path");
 const { createExitConfirmation } = require("./exit_confirmation");
 const { stopServerProcess } = require("./process_cleanup");
 const { checkPortAvailable, resolveServerPort, serverPortForMode } = require("./port_policy");
+const { resolveProjectRoot, resolveWorkspaceRoot } = require("./project_root");
 const { showEnvironmentWizard } = require("./environment_wizard");
 
 const LEGACY_APP_TITLE = "Gaussian Scene Workbench (Legacy HTML)";
@@ -20,6 +21,7 @@ let serverPort = null;
 let serverProcessPid = null;
 let cleanupStarted = false;
 let ROOT = null;
+let WORKSPACE_ROOT = null;
 let CROP_EDITOR_DIR = null;
 let SERVER_PATH = null;
 let LOG_PATH = null;
@@ -109,33 +111,25 @@ function setupExitConfirmation() {
   });
 }
 
-function resolveProjectRoot() {
-  const packagedRoot = path.dirname(process.execPath);
-  const legacyWorkspaceRoot = app.isPackaged
-    ? path.resolve(packagedRoot, "..", "..", "..")
-    : "";
-  const candidates = [
-    process.env.GS_EDITOR_ROOT,
-    legacyWorkspaceRoot,
-    path.resolve(__dirname, ".."),
-    packagedRoot,
-    path.join(app.getPath("desktop"), "3dgs")
-  ].filter(Boolean);
-
-  for (const candidate of candidates) {
-    const server = path.join(candidate, "crop_editor", "server.py");
-    if (fs.existsSync(server)) return candidate;
-  }
-  throw new Error(`Could not find 3dgs project root. Set GS_EDITOR_ROOT or keep the project at ${path.join(app.getPath("desktop"), "3dgs")}`);
-}
-
 function configurePaths() {
-  ROOT = resolveProjectRoot();
+  ROOT = resolveProjectRoot({
+    appDir: __dirname,
+    execPath: process.execPath,
+    desktopPath: app.getPath("desktop"),
+    isPackaged: app.isPackaged,
+    env: process.env
+  });
+  WORKSPACE_ROOT = resolveWorkspaceRoot({
+    projectRoot: ROOT,
+    desktopPath: app.getPath("desktop"),
+    env: process.env
+  });
   CROP_EDITOR_DIR = path.join(ROOT, "crop_editor");
   SERVER_PATH = path.join(CROP_EDITOR_DIR, "server.py");
   LOG_PATH = path.join(ROOT, "desktop_app", "gaussian_scene_workbench.log");
   fs.mkdirSync(path.dirname(LOG_PATH), { recursive: true });
   log(`ROOT=${ROOT}`);
+  log(`WORKSPACE_ROOT=${WORKSPACE_ROOT}`);
   log(`SERVER_PATH=${SERVER_PATH}`);
 }
 
@@ -351,6 +345,7 @@ async function startPythonServer() {
     CONDA_PREFIX: envRoot,
     GAUSSIAN_SPLATTING_CONDA_PREFIX: envRoot,
     GS_CONDA_PREFIX: envRoot,
+    GS_EDITOR_WORKSPACE_ROOT: WORKSPACE_ROOT,
     ...(condaRoot ? { CONDA_ROOT: condaRoot } : {})
   };
 

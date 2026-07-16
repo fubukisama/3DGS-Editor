@@ -31,3 +31,11 @@ test("workbench branding is present in the document shell", () => {
   assert.match(indexSource, /<title>Gaussian Scene Workbench \(Legacy HTML\)<\/title>/);
   assert.match(indexSource, /<strong class="brand">Gaussian Scene Workbench<\/strong>/);
 });
+
+test("Gaussian PLY export is available in the output ribbon", () => {
+  assert.match(indexSource, /id="downloadPly"[^>]+data-i18n="button\.downloadPly"/);
+  assert.match(appSource, /function downloadGaussianPly\(\)/);
+  assert.match(appSource, /\/api\/splat\/ply\?scene=/);
+  assert.match(appSource, /"button\.downloadPly": "导出 PLY"/);
+  assert.match(appSource, /"button\.downloadPly": "PLY 保存"/);
+});

@@ -29,7 +29,20 @@ if (-not $CondaRoot) {
     )
     $CondaRoot = $CondaRootCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 }
-$ColmapBin = Join-Path $env:USERPROFILE "Downloads\colmap-x64-windows-cuda\bin"
+$ColmapCandidates = @($env:COLMAP_PATH, $env:COLMAP_EXE) | Where-Object { $_ }
+$ColmapCandidates += @(
+    (Join-Path $InstallRoot "COLMAP\bin\colmap.exe"),
+    (Join-Path $env:USERPROFILE "Downloads\colmap-x64-windows-cuda\bin\colmap.exe")
+)
+$VersionedColmapRoot = Join-Path $InstallRoot "Tools\COLMAP"
+if (Test-Path -LiteralPath $VersionedColmapRoot) {
+    $ColmapCandidates += Get-ChildItem -LiteralPath $VersionedColmapRoot -Directory |
+        Sort-Object { try { [version]$_.Name } catch { [version]'0.0' } } -Descending |
+        ForEach-Object { Join-Path $_.FullName "bin\colmap.exe" }
+}
+$ColmapExe = $ColmapCandidates |
+    Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } |
+    Select-Object -First 1
 if ($GaussianEnv -and (Test-Path $GaussianEnv)) {
     $env:GAUSSIAN_SPLATTING_CONDA_PREFIX = $GaussianEnv
     $env:GS_CONDA_PREFIX = $GaussianEnv
@@ -39,8 +52,10 @@ if ($GaussianEnv -and (Test-Path $GaussianEnv)) {
 if ($CondaRoot -and (Test-Path $CondaRoot)) {
     $env:Path = "$CondaRoot;$CondaRoot\Scripts;$CondaRoot\condabin;$env:Path"
 }
-if (Test-Path $ColmapBin) {
-    $env:Path = "$ColmapBin;$env:Path"
+if ($ColmapExe) {
+    $env:COLMAP_PATH = $ColmapExe
+    $env:COLMAP_EXE = $ColmapExe
+    $env:Path = "$(Split-Path -Parent $ColmapExe);$env:Path"
 }
 
 $PythonExecutable = "python"
@@ -109,7 +124,11 @@ Test-Tool -Name "Python media dependencies" -Executable $PythonExecutable -Argum
 )
 Test-Tool -Name "Conda" -Executable $CondaExecutable -Arguments @("--version")
 Test-Tool -Name "Git" -Executable "git" -Arguments @("--version")
-Test-Tool -Name "COLMAP" -Executable "colmap" -Arguments @("-h")
+if ($ColmapExe) {
+    Test-Tool -Name "COLMAP" -Executable $ColmapExe -Arguments @("-h")
+} else {
+    Test-Tool -Name "COLMAP" -Executable "colmap" -Arguments @("-h")
+}
 Test-Tool -Name "CUDA compiler" -Executable "nvcc" -Arguments @("--version")
 
 Write-Host ""

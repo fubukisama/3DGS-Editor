@@ -22,9 +22,10 @@ from plyfile import PlyData, PlyElement
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DATASETS_DIR = ROOT / "datasets"
-OUTPUT_DIR = ROOT / "output"
-PSNR_REPORTS_DIR = ROOT / "reports" / "psnr"
+WORKSPACE_ROOT = Path(os.environ.get("GS_EDITOR_WORKSPACE_ROOT", ROOT)).resolve()
+DATASETS_DIR = WORKSPACE_ROOT / "datasets"
+OUTPUT_DIR = WORKSPACE_ROOT / "output"
+PSNR_REPORTS_DIR = WORKSPACE_ROOT / "reports" / "psnr"
 GAUSSIAN_DIR = ROOT / "gaussian-splatting"
 TWO_DGS_DIR = Path(os.environ.get("TWO_DGS_DIR", Path.home() / "Documents" / "2dgs"))
 SUGAR_DIR = Path(os.environ.get("SUGAR_DIR", ROOT / "SuGaR"))
@@ -475,7 +476,12 @@ def list_scenes():
             continue
         it = latest_iteration(child.name)
         if it is not None and ply_path(child.name, it).exists():
-            scenes.append({"name": child.name, "latest_iteration": it, "backend": scene_backend(child.name, it)})
+            scenes.append({
+                "name": child.name,
+                "latest_iteration": it,
+                "backend": scene_backend(child.name, it),
+                "path": str(child.resolve()),
+            })
     return scenes
 
 
@@ -558,10 +564,10 @@ def scene_splat_assets(scene, iteration):
     return [
         asset_file(
             source,
-            "PLY point cloud",
+            "Gaussian PLY model",
             "ply",
-            f"/api/ply?scene={scene}&iteration={iteration}",
-            {"format": "ply"},
+            f"/api/splat/ply?scene={scene}&iteration={iteration}",
+            {"format": "ply", "label_key": "asset.gaussianPly"},
         ),
         asset_file(
             parent / "point_cloud.spz",
@@ -2741,28 +2747,12 @@ def prepare_sugar_checkpoint(model_path, source_path, iteration, options=None):
     return stage, staged_source
 
 
-def colmap_executable():
-    configured = os.environ.get("COLMAP_PATH")
-    if configured:
-        return Path(configured)
-    local_candidates = [
-        ROOT / "third_party" / "colmap" / "bin" / "colmap.exe",
-        ROOT / "tools" / "colmap" / "bin" / "colmap.exe",
-        ROOT / "colmap" / "bin" / "colmap.exe",
-    ]
-    for candidate in local_candidates:
-        if candidate.exists():
-            return candidate
-    userprofile = os.environ.get("USERPROFILE", str(Path.home()))
-    candidate = Path(userprofile) / "Downloads" / "colmap-x64-windows-cuda" / "bin" / "colmap.exe"
-    if candidate.exists():
-        return candidate
-    found = shutil.which("colmap")
-    return Path(found) if found else candidate
-
-
 def colmap_process_env():
     env = os.environ.copy()
+    for name in list(env):
+        normalized = name.upper()
+        if normalized.startswith("CONDA_") or normalized.startswith("_CONDA_"):
+            env.pop(name, None)
     env["PYTHONUTF8"] = "1"
     colmap = colmap_executable()
     path_parts = [str(colmap.parent), env.get("PATH", "")]
@@ -3340,6 +3330,41 @@ def openmvs_bin_dirs():
     return dirs
 
 
+def versioned_colmap_candidates(install_roots=None):
+    drive_root = Path(ROOT.anchor) if ROOT.anchor else ROOT
+    if install_roots is None:
+        install_roots = (
+            drive_root / "Tools" / "COLMAP",
+            drive_root / "tools" / "colmap",
+            drive_root / "COLMAP",
+        )
+    candidates = []
+    for install_root in map(Path, install_roots):
+        direct = install_root / "bin" / "colmap.exe"
+        if not install_root.is_dir():
+            continue
+
+        def version_key(path):
+            try:
+                return tuple(int(part) for part in path.name.split("."))
+            except ValueError:
+                return ()
+
+        version_dirs = sorted(
+            (path for path in install_root.iterdir() if path.is_dir()),
+            key=version_key,
+            reverse=True,
+        )
+        candidates.extend(
+            path / "bin" / "colmap.exe"
+            for path in version_dirs
+            if (path / "bin" / "colmap.exe").is_file()
+        )
+        if direct.is_file():
+            candidates.append(direct)
+    return candidates
+
+
 def openmvs_executable(name):
     exe_name = f"{name}.exe" if os.name == "nt" and not name.lower().endswith(".exe") else name
     for directory in openmvs_bin_dirs():
@@ -3351,14 +3376,16 @@ def openmvs_executable(name):
 
 
 def colmap_executable():
-    env_colmap = os.environ.get("COLMAP_EXE")
-    if env_colmap and Path(env_colmap).exists():
-        return Path(env_colmap)
+    for variable in ("COLMAP_EXE", "COLMAP_PATH"):
+        configured = os.environ.get(variable)
+        if configured and Path(configured).is_file():
+            return Path(configured)
     fallback = ROOT / "third_party" / "colmap" / "bin" / "colmap.exe"
     for candidate in (
         fallback,
         ROOT / "tools" / "colmap" / "bin" / "colmap.exe",
         ROOT / "colmap" / "bin" / "colmap.exe",
+        *versioned_colmap_candidates(),
     ):
         if candidate.exists():
             return candidate
@@ -6843,7 +6870,11 @@ class Handler(BaseHTTPRequestHandler):
                     },
                 })
             if parsed.path == "/api/scenes":
-                return self.send_json({"scenes": list_scenes()})
+                return self.send_json({
+                    "scenes": list_scenes(),
+                    "workspace_root": str(WORKSPACE_ROOT),
+                    "output_dir": str(OUTPUT_DIR),
+                })
             if parsed.path == "/api/datasets":
                 return self.send_json({"datasets": list_datasets()})
             if parsed.path == "/api/assets":
@@ -6964,6 +6995,16 @@ class Handler(BaseHTTPRequestHandler):
                 scene = safe_name(qs.get("scene", [""])[0])
                 iteration = int(qs.get("iteration", [latest_iteration(scene)])[0])
                 return self.serve_file(ply_path(scene, iteration), "application/octet-stream")
+            if parsed.path == "/api/splat/ply":
+                qs = parse_qs(parsed.query)
+                scene = safe_name(qs.get("scene", [""])[0])
+                iteration = int(qs.get("iteration", [latest_iteration(scene)])[0])
+                download_name = f"{scene}_iteration_{iteration}_gaussians.ply"
+                return self.serve_file(
+                    ply_path(scene, iteration),
+                    "application/octet-stream",
+                    download_name,
+                )
             if parsed.path == "/api/splat/export":
                 qs = parse_qs(parsed.query)
                 scene = safe_name(qs.get("scene", [""])[0])

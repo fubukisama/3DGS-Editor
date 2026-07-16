@@ -516,7 +516,7 @@ if ($Package) {
   if (-not (Test-Path -LiteralPath $WinDeployQt)) {
     throw "windeployqt was not found: $WinDeployQt"
   }
-  $PackageRoot = Join-Path $NativeRoot "dist\Gaussian-Scene-Workbench-0.3.0-native-preview-win-x64"
+  $PackageRoot = Join-Path $NativeRoot "dist\Gaussian-Scene-Workbench-0.3.1-native-preview-win-x64"
   if (Test-Path -LiteralPath $PackageRoot) {
     Remove-DirectoryWithRetry -Path $PackageRoot -AllowedParent (Join-Path $NativeRoot "dist")
   }
@@ -536,6 +536,7 @@ if ($Package) {
   Copy-Item -LiteralPath (Join-Path $NativeRoot "build_manifest.json") -Destination $PackageRoot -Force
   Copy-Item -LiteralPath (Join-Path $Root "docs\NATIVE_MIGRATION.md") -Destination $PackageRoot -Force
   Copy-Item -LiteralPath (Join-Path $Root "docs\NATIVE_PARITY.md") -Destination $PackageRoot -Force
+  Copy-Item -LiteralPath (Join-Path $Root "docs\COLMAP_SETUP.md") -Destination $PackageRoot -Force
   Copy-Item -LiteralPath (Join-Path $Root "LICENSE") -Destination $PackageRoot -Force
   Copy-Item -LiteralPath (Join-Path $Root "THIRD_PARTY_LICENSES.md") -Destination $PackageRoot -Force
   & (Join-Path $Root "scripts\stage_native_backend.ps1") `

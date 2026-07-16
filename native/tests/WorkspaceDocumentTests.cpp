@@ -27,6 +27,7 @@ private slots:
   void loadsBinaryGaussianSphericalHarmonicColors();
   void activatesGaussianScaleRotationAndOpacity();
   void detectsColmapDatasetLayoutAndExecutable();
+  void selectsNewestVersionedColmapExecutable();
   void detectsCompleteAndIncompleteColmapModels();
   void selectsBrushStrokeAndHonorsVisibility();
   void tracksSelectionDeletionUndoAndRedo();
@@ -255,6 +256,30 @@ void WorkspaceDocumentTests::detectsColmapDatasetLayoutAndExecutable() {
   executable.close();
   QCOMPARE(gsw::findColmapExecutable({}, executable.fileName()),
            QDir::toNativeSeparators(QFileInfo(executable).absoluteFilePath()));
+}
+
+void WorkspaceDocumentTests::selectsNewestVersionedColmapExecutable() {
+  QTemporaryDir temporary;
+  QVERIFY(temporary.isValid());
+  const QDir root(temporary.path());
+  QVERIFY(root.mkpath(QStringLiteral("bin")));
+  QFile direct(root.filePath(QStringLiteral("bin/colmap.exe")));
+  QVERIFY(direct.open(QIODevice::WriteOnly));
+  direct.write("older direct fixture");
+  for (const QString &version : {QStringLiteral("3.13.0"),
+                                 QStringLiteral("4.1.0")}) {
+    QVERIFY(root.mkpath(version + QStringLiteral("/bin")));
+    QFile executable(root.filePath(version + QStringLiteral("/bin/colmap.exe")));
+    QVERIFY(executable.open(QIODevice::WriteOnly));
+    executable.write("fixture");
+  }
+  QVERIFY(root.mkpath(QStringLiteral("nightly/bin")));
+  QFile nightly(root.filePath(QStringLiteral("nightly/bin/colmap.exe")));
+  QVERIFY(nightly.open(QIODevice::WriteOnly));
+  nightly.write("fixture");
+  QCOMPARE(gsw::findVersionedColmapExecutable(root.absolutePath()),
+           QDir::toNativeSeparators(
+               root.filePath(QStringLiteral("4.1.0/bin/colmap.exe"))));
 }
 
 void WorkspaceDocumentTests::detectsCompleteAndIncompleteColmapModels() {
