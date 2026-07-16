@@ -306,6 +306,9 @@ const I18N = {
     "button.refresh": "Refresh",
     "button.close": "Close",
     "button.checkEnv": "Check Env",
+    "env.smartAppControlBlocked": "Smart App Control blocked the primary unsigned CUDA extension.",
+    "env.compatibilityRuntime": "Verified compatibility runtime",
+    "env.preflightFailed": "Training was not started because the runtime check failed.",
     "option.bounded": "Bounded",
     "option.unbounded": "Unbounded",
     "option.sugar": "SuGaR",
@@ -494,6 +497,9 @@ const I18N = {
     "button.refresh": "刷新",
     "button.close": "关闭",
     "button.checkEnv": "检查环境",
+    "env.smartAppControlBlocked": "Smart App Control 已阻止主要的未签名 CUDA 扩展。",
+    "env.compatibilityRuntime": "已验证的兼容运行时",
+    "env.preflightFailed": "运行环境检查失败，训练未启动。",
     "option.bounded": "有界",
     "option.unbounded": "无界",
     "option.sugar": "SuGaR",
@@ -682,6 +688,9 @@ const I18N = {
     "button.refresh": "更新",
     "button.close": "閉じる",
     "button.checkEnv": "環境確認",
+    "env.smartAppControlBlocked": "Smart App Control が署名されていないメイン CUDA 拡張をブロックしました。",
+    "env.compatibilityRuntime": "検証済み互換ランタイム",
+    "env.preflightFailed": "ランタイム確認に失敗したため、学習を開始しませんでした。",
     "option.bounded": "有界",
     "option.unbounded": "無界",
     "option.sugar": "SuGaR",
@@ -3214,17 +3223,26 @@ async function checkTrainingEnvironment() {
       `ffmpeg: ${data.ffmpeg_exists ? "OK" : "MISSING"} - ${data.ffmpeg}`,
       `OpenCV: ${data.opencv_ok ? `OK - ${data.opencv_detail || ""}` : `MISSING - ${data.opencv_error}`}`,
       `Video packages: ${data.video_packages_ok ? "OK" : `MISSING - ${data.video_packages_error}`}`,
-      `3DGS runtime imports: ${data.runtime_imports_ok ? `OK - ${data.runtime_imports_detail || ""}` : `FAILED - ${data.runtime_imports_error}`}`,
+      `${backend.toUpperCase()} primary runtime: ${data.runtime_imports_ok ? `OK - ${data.runtime_imports_detail || ""}` : `FAILED - ${data.runtime_imports_error}`}`,
+      ...(data.native_extension_policy_blocked
+        ? [`Smart App Control: ON - ${t("env.smartAppControlBlocked")}`]
+        : [`Smart App Control: ${String(data.smart_app_control_state || "unknown").toUpperCase()}`]),
+      ...(data.runtime_fallback_ok
+        ? [`${t("env.compatibilityRuntime")}: OK - ${data.runtime_fallback_python}`]
+        : []),
       `Node helper: ${data.crop_node_helper_exists ? "OK" : "MISSING"} - ${data.crop_node_helper}`,
     ];
     appendTrainingLog(lines.join("\n"));
     const backendOk = backend === "2dgs"
       ? data.two_dgs_dir_exists && data.two_dgs_python_exists && data.two_dgs_train_exists
       : true;
-    const commonOk = data.conda_exists && data.python_exists && data.env_root_exists && data.colmap_exists && data.opencv_ok && data.video_packages_ok && data.ffmpeg_exists && data.gaussian_dir_exists && data.runtime_imports_ok;
-    setStatus(commonOk && backendOk ? `${backend.toUpperCase()} training environment OK.` : "Training environment has missing components. See log.");
+    const commonOk = data.conda_exists && data.python_exists && data.env_root_exists && data.colmap_exists && data.opencv_ok && data.video_packages_ok && data.ffmpeg_exists && data.gaussian_dir_exists && data.runtime_ready;
+    const ready = commonOk && backendOk;
+    setStatus(ready ? `${backend.toUpperCase()} training environment OK (${data.runtime_mode || "primary"}).` : t("env.preflightFailed"));
+    return ready;
   } catch (err) {
     setStatus(`Environment check failed: ${err.message}`);
+    return false;
   }
 }
 
@@ -3299,7 +3317,12 @@ async function importAndStartTraining(uploadFirst) {
   showTrainingLog();
   trainLog.textContent = "";
   try {
-    await checkTrainingEnvironment();
+    const envReady = await checkTrainingEnvironment();
+    if (!envReady) {
+      appendTrainingLog(t("env.preflightFailed"));
+      setTrainingBusy(false);
+      return;
+    }
     if (uploadFirst) {
       if (!files.length) {
         setStatus("Choose photos, a video, or a folder first.");

@@ -20,6 +20,11 @@ from urllib.parse import parse_qs, quote, urlparse
 import numpy as np
 from plyfile import PlyData, PlyElement
 
+try:
+    import winreg
+except ImportError:
+    winreg = None
+
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE_ROOT = Path(os.environ.get("GS_EDITOR_WORKSPACE_ROOT", ROOT)).resolve()
@@ -57,6 +62,7 @@ MESH_MODES = {"bounded", "unbounded", "sugar", "gs2mesh"}
 SPARSE_ADAM_AVAILABLE_CACHE = None
 MESH_PREVIEW_MAX_FACES = 300000
 MESH_CHUNK_MAX_FACES = 250000
+SMART_APP_CONTROL_SETTINGS_URI = "windowsdefender://smartscreen/"
 
 
 def install_drive_root():
@@ -4146,8 +4152,10 @@ def set_job_stage(job, status, stage):
             persist_train_job(job)
 
 
-def training_env(backend="3dgs"):
+def training_env(backend="3dgs", runtime_mode=None):
     backend = safe_training_backend(backend)
+    if backend == "3dgs" and runtime_mode == "legacy_sugar":
+        return legacy_3dgs_env()
     env = os.environ.copy()
     env["PYTHONUTF8"] = "1"
     env_root = gaussian_env_root()
@@ -4201,6 +4209,70 @@ def sugar_env():
     return env
 
 
+def legacy_3dgs_source_root():
+    candidates = [
+        Path(os.environ["LEGACY_3DGS_SOURCE_ROOT"]) if os.environ.get("LEGACY_3DGS_SOURCE_ROOT") else None,
+        SUGAR_DIR / "gaussian_splatting",
+        WORKSPACE_ROOT / "SuGaR" / "gaussian_splatting",
+        ROOT / "SuGaR" / "gaussian_splatting",
+    ]
+    for candidate in [item for item in candidates if item]:
+        diff_root = candidate / "submodules" / "diff-gaussian-rasterization"
+        knn_root = candidate / "submodules" / "simple-knn"
+        if diff_root.exists() and knn_root.exists():
+            return candidate
+    return None
+
+
+def legacy_3dgs_env():
+    env = sugar_env()
+    source_root = legacy_3dgs_source_root()
+    if source_root:
+        extension_paths = [
+            str(source_root / "submodules" / "diff-gaussian-rasterization"),
+            str(source_root / "submodules" / "simple-knn"),
+        ]
+        existing = env.get("PYTHONPATH", "")
+        env["PYTHONPATH"] = os.pathsep.join([*extension_paths, existing])
+    return env
+
+
+def smart_app_control_state():
+    if os.name != "nt" or winreg is None:
+        return "not_applicable"
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE,
+            r"SYSTEM\CurrentControlSet\Control\CI\Policy",
+        ) as key:
+            value, _ = winreg.QueryValueEx(key, "VerifiedAndReputablePolicyState")
+    except OSError:
+        return "unknown"
+    return {0: "off", 1: "on", 2: "evaluation"}.get(int(value), "unknown")
+
+
+def native_extension_policy_blocked(error_text, smart_app_state):
+    if smart_app_state != "on":
+        return False
+    text = str(error_text or "").lower()
+    markers = (
+        "winerror 4551",
+        "application control policy",
+        "application-control policy",
+        "アプリケーション制御ポリシー",
+    )
+    return any(marker in text for marker in markers)
+
+
+def smart_app_control_guidance():
+    return (
+        "Windows Smart App Control is ON and blocked the unsigned CUDA extension required by 3DGS. "
+        "This Windows feature has no per-file allow rule. The workbench will use a compatible local "
+        "SuGaR runtime when available; otherwise open Windows Security > App & browser control > "
+        "Smart App Control settings, or install a build signed by a trusted certificate authority."
+    )
+
+
 def gs2mesh_env_root():
     configured = os.environ.get("GS2MESH_CONDA_PREFIX")
     if configured:
@@ -4232,10 +4304,12 @@ def gs2mesh_env():
     return env
 
 
-def training_python(backend="3dgs"):
+def training_python(backend="3dgs", runtime_mode=None):
     backend = safe_training_backend(backend)
     if backend == "2dgs":
         return TWO_DGS_DIR / ".venv" / "Scripts" / "python.exe"
+    if runtime_mode == "legacy_sugar":
+        return sugar_env_root() / "python.exe"
     gaussian_python = gaussian_env_root() / "python.exe"
     if gaussian_python.exists():
         return gaussian_python
@@ -4318,11 +4392,36 @@ def training_environment_report(backend="3dgs"):
         env,
         "import cv2, imageio, imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())",
     )
+    runtime_probe_code = (
+        "import torch, cv2; from PIL import Image; import diff_surfel_rasterization, simple_knn; "
+        "print('cuda', torch.cuda.is_available())"
+        if backend == "2dgs"
+        else
+        "import torch, cv2; from PIL import Image; import diff_gaussian_rasterization, simple_knn; "
+        "print('cuda', torch.cuda.is_available())"
+    )
     runtime_ok, runtime_detail = python_probe(
         python_path,
         env,
-        "import torch, cv2; from PIL import Image; import diff_gaussian_rasterization, simple_knn; print('cuda', torch.cuda.is_available())",
+        runtime_probe_code,
     )
+    smart_app_state = smart_app_control_state()
+    policy_blocked = native_extension_policy_blocked(runtime_detail, smart_app_state) if not runtime_ok else False
+    fallback_python = sugar_env_root() / "python.exe"
+    fallback_source = legacy_3dgs_source_root()
+    fallback_ok = False
+    fallback_detail = "not required" if runtime_ok else "compatible SuGaR runtime unavailable"
+    if backend == "3dgs" and not runtime_ok and fallback_python.exists() and fallback_source:
+        fallback_ok, fallback_detail = python_probe(
+            fallback_python,
+            legacy_3dgs_env(),
+            "import torch; import diff_gaussian_rasterization, simple_knn; "
+            "from diff_gaussian_rasterization import GaussianRasterizationSettings; "
+            "print('legacy fields', ','.join(GaussianRasterizationSettings._fields))",
+            timeout=40,
+        )
+    runtime_ready = runtime_ok or fallback_ok
+    runtime_mode = "primary" if runtime_ok else "legacy_sugar" if fallback_ok else "unavailable"
     report = {
         "backend": backend,
         "root": str(ROOT),
@@ -4363,6 +4462,17 @@ def training_environment_report(backend="3dgs"):
         "runtime_imports_ok": runtime_ok,
         "runtime_imports_error": None if runtime_ok else runtime_detail,
         "runtime_imports_detail": runtime_detail if runtime_ok else None,
+        "runtime_ready": runtime_ready,
+        "runtime_mode": runtime_mode,
+        "runtime_python": str(python_path if runtime_ok else fallback_python if fallback_ok else python_path),
+        "runtime_fallback_ok": fallback_ok,
+        "runtime_fallback_detail": fallback_detail,
+        "runtime_fallback_python": str(fallback_python),
+        "runtime_fallback_source": str(fallback_source or ""),
+        "smart_app_control_state": smart_app_state,
+        "native_extension_policy_blocked": policy_blocked,
+        "smart_app_control_guidance": smart_app_control_guidance() if policy_blocked else "",
+        "smart_app_control_settings_uri": SMART_APP_CONTROL_SETTINGS_URI,
     }
     report.update(openmvs_environment_report())
     return report
@@ -4387,6 +4497,13 @@ def ensure_training_environment(backend="3dgs"):
         problems.append(f"Missing COLMAP executable: {report['colmap']}")
     if not report["opencv_ok"]:
         problems.append(f"OpenCV unavailable for video import: {report['opencv_error']}")
+    if not report.get("runtime_ready", report.get("runtime_imports_ok", False)):
+        if report.get("native_extension_policy_blocked"):
+            problems.append(report.get("smart_app_control_guidance") or smart_app_control_guidance())
+        else:
+            problems.append(
+                f"{backend.upper()} CUDA runtime imports failed: {report.get('runtime_imports_error') or 'unknown error'}"
+            )
     if problems:
         raise RuntimeError("; ".join(problems))
     return report
@@ -4429,6 +4546,14 @@ def sparse_adam_available():
 def resolve_training_options_for_environment(backend, options, job=None):
     backend = safe_training_backend(backend)
     resolved = dict(options)
+    if backend == "3dgs" and job is not None and job.get("runtime_mode") == "legacy_sugar":
+        if resolved.get("antialiasing"):
+            resolved["antialiasing"] = False
+            add_job_log(
+                job,
+                "WARNING: Smart App Control compatibility runtime does not expose the antialiasing API; disabling antialiasing.",
+            )
+        resolved["optimizer_type"] = "default"
     if backend == "3dgs" and resolved.get("optimizer_type") == "sparse_adam" and not sparse_adam_available():
         resolved["optimizer_type"] = "default"
         message = (
@@ -4462,7 +4587,10 @@ def run_logged(job, args, cwd, backend=None):
     elif backend == "gs2mesh":
         process_env = gs2mesh_env()
     else:
-        process_env = training_env(backend or job.get("backend", "3dgs"))
+        process_env = training_env(
+            backend or job.get("backend", "3dgs"),
+            runtime_mode=job.get("runtime_mode"),
+        )
     process = subprocess.Popen(
         [str(a) for a in args],
         cwd=str(cwd),
@@ -5057,7 +5185,7 @@ def write_training_metadata(output, backend, quality=None, options=None):
             json.dump(scene_metadata, f, indent=2)
 
 
-def training_command(backend, dataset, output, options, start_checkpoint=None):
+def training_command(backend, dataset, output, options, start_checkpoint=None, runtime_mode=None):
     backend = safe_training_backend(backend)
     iterations = options["iterations"]
     save_iterations = [str(value) for value in training_milestone_iterations(iterations)]
@@ -5092,7 +5220,7 @@ def training_command(backend, dataset, output, options, start_checkpoint=None):
         return command
 
     command = [
-        training_python("3dgs"),
+        training_python("3dgs", runtime_mode=runtime_mode),
         "train.py",
         "-s",
         dataset,
@@ -5142,8 +5270,14 @@ def run_training_job(job, run_convert, quality, overwrite):
         backend = safe_training_backend(job.get("backend", "3dgs"))
         set_job_stage(job, "running", "environment")
         report = ensure_training_environment(backend)
+        job["runtime_mode"] = report.get("runtime_mode", "primary")
         add_job_log(job, f"Backend: {backend.upper()}")
-        add_job_log(job, f"Python: {report['python']}")
+        add_job_log(job, f"Python: {report.get('runtime_python') or report['python']}")
+        if job["runtime_mode"] == "legacy_sugar":
+            add_job_log(
+                job,
+                "Smart App Control blocked the primary 3DGS CUDA extension; using the verified SuGaR compatibility runtime.",
+            )
         if backend == "2dgs":
             add_job_log(job, f"2DGS: {report['two_dgs_dir']}")
         add_job_log(job, f"COLMAP: {report['colmap']}")
@@ -5208,7 +5342,14 @@ def run_training_job(job, run_convert, quality, overwrite):
         start_checkpoint = job.get("resume_checkpoint")
         if start_checkpoint:
             add_job_log(job, f"Resuming from checkpoint: {start_checkpoint}")
-        command = training_command(backend, dataset, output, options, start_checkpoint=start_checkpoint)
+        command = training_command(
+            backend,
+            dataset,
+            output,
+            options,
+            start_checkpoint=start_checkpoint,
+            runtime_mode=job.get("runtime_mode"),
+        )
         set_job_stage(job, "running", "train")
         run_logged(job, command, TWO_DGS_DIR if backend == "2dgs" else GAUSSIAN_DIR, backend)
         write_training_metadata(output, backend, quality, options)

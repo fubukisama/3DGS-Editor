@@ -39,3 +39,10 @@ test("Gaussian PLY export is available in the output ribbon", () => {
   assert.match(appSource, /"button\.downloadPly": "导出 PLY"/);
   assert.match(appSource, /"button\.downloadPly": "PLY 保存"/);
 });
+
+test("training does not start when the runtime preflight fails", () => {
+  assert.match(appSource, /const envReady = await checkTrainingEnvironment\(\)/);
+  assert.match(appSource, /if \(!envReady\)/);
+  assert.match(appSource, /runtime_ready/);
+  assert.match(appSource, /smart_app_control_state/);
+});

@@ -937,6 +937,22 @@ class TrainingBackendTests(unittest.TestCase):
         self.assertIn("--exposure_lr_init", command)
         self.assertEqual(command[command.index("--exposure_lr_init") + 1], "0.001")
 
+    def test_3dgs_training_command_selects_legacy_runtime_python(self):
+        options = server.training_options_from_payload("3dgs", "quick", {})
+        fallback_python = Path("compatibility-runtime") / "python.exe"
+
+        with mock.patch.object(server, "training_python", return_value=fallback_python) as python_mock:
+            command = server.training_command(
+                "3dgs",
+                "dataset",
+                "output",
+                options,
+                runtime_mode="legacy_sugar",
+            )
+
+        self.assertEqual(command[0], fallback_python)
+        python_mock.assert_called_once_with("3dgs", runtime_mode="legacy_sugar")
+
     def test_sparse_adam_falls_back_when_accelerated_rasterizer_is_missing(self):
         options = server.training_options_from_payload("3dgs", "quality", {
             "optimizer_type": "sparse_adam",
@@ -1643,6 +1659,62 @@ class TrainingBackendTests(unittest.TestCase):
         self.assertTrue(report["two_dgs_dir"].endswith("Documents\\2dgs"))
         self.assertTrue(report["two_dgs_python"].endswith(".venv\\Scripts\\python.exe"))
         self.assertTrue(report["two_dgs_train"].endswith("train.py"))
+
+    def test_training_environment_rejects_smart_app_control_blocked_runtime(self):
+        report = {
+            "python_exists": True,
+            "gaussian_dir_exists": True,
+            "colmap_exists": True,
+            "opencv_ok": True,
+            "runtime_ready": False,
+            "runtime_imports_ok": False,
+            "runtime_imports_error": "ImportError: DLL load failed while importing _C",
+            "native_extension_policy_blocked": True,
+            "smart_app_control_state": "on",
+            "smart_app_control_guidance": "Windows Smart App Control is ON and blocked the CUDA extension.",
+        }
+
+        with mock.patch.object(server, "training_environment_report", return_value=report):
+            with self.assertRaisesRegex(RuntimeError, "Smart App Control"):
+                server.ensure_training_environment("3dgs")
+
+    def test_training_environment_accepts_compatible_fallback_runtime(self):
+        report = {
+            "python_exists": True,
+            "gaussian_dir_exists": True,
+            "colmap_exists": True,
+            "opencv_ok": True,
+            "runtime_ready": True,
+            "runtime_imports_ok": False,
+            "runtime_imports_error": "ImportError: DLL load failed while importing _C",
+            "runtime_fallback_ok": True,
+            "runtime_mode": "legacy_sugar",
+            "native_extension_policy_blocked": True,
+            "smart_app_control_state": "on",
+        }
+
+        with mock.patch.object(server, "training_environment_report", return_value=report):
+            self.assertIs(server.ensure_training_environment("3dgs"), report)
+
+    def test_smart_app_control_detection_does_not_mask_missing_dll_errors(self):
+        error = "ImportError: DLL load failed while importing _C: The specified module could not be found."
+
+        self.assertFalse(server.native_extension_policy_blocked(error, "on"))
+
+    def test_smart_app_control_detection_accepts_localized_policy_error(self):
+        error = "DLL load failed while importing _C: アプリケーション制御ポリシーによってブロックされました。"
+
+        self.assertTrue(server.native_extension_policy_blocked(error, "on"))
+
+    def test_legacy_runtime_disables_unsupported_training_features(self):
+        options = server.training_options_from_payload("3dgs", "max_quality", {})
+        job = {"log": [], "updated_at": 1.0, "runtime_mode": "legacy_sugar"}
+
+        resolved = server.resolve_training_options_for_environment("3dgs", options, job)
+
+        self.assertFalse(resolved["antialiasing"])
+        self.assertEqual(resolved["optimizer_type"], "default")
+        self.assertTrue(any("compatibility runtime" in line for line in job["log"]))
 
     def test_point_payload_reports_2dgs_backend_and_robust_view_bounds(self):
         with tempfile.TemporaryDirectory() as tmp:
