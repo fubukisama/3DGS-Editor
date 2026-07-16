@@ -63,13 +63,22 @@ def install_drive_root():
     return Path(ROOT.anchor) if ROOT.anchor else None
 
 
+def conda_root_from_prefix(prefix):
+    if not prefix:
+        return None
+    path = Path(prefix)
+    if path.parent.name.lower() == "envs":
+        return path.parent.parent
+    return path
+
+
 def conda_root_candidates():
     drive = install_drive_root()
     candidates = [
         os.environ.get("CONDA_ROOT"),
         os.environ.get("MINIFORGE_ROOT"),
         os.environ.get("MAMBA_ROOT_PREFIX"),
-        Path(os.environ["CONDA_PREFIX"]).parents[1] if os.environ.get("CONDA_PREFIX") else None,
+        conda_root_from_prefix(os.environ.get("CONDA_PREFIX")),
         drive / "miniforge3" if drive else None,
         drive / "conda" if drive else None,
         drive / "anaconda" if drive else None,
@@ -2738,28 +2747,12 @@ def prepare_sugar_checkpoint(model_path, source_path, iteration, options=None):
     return stage, staged_source
 
 
-def colmap_executable():
-    configured = os.environ.get("COLMAP_PATH")
-    if configured:
-        return Path(configured)
-    local_candidates = [
-        ROOT / "third_party" / "colmap" / "bin" / "colmap.exe",
-        ROOT / "tools" / "colmap" / "bin" / "colmap.exe",
-        ROOT / "colmap" / "bin" / "colmap.exe",
-    ]
-    for candidate in local_candidates:
-        if candidate.exists():
-            return candidate
-    userprofile = os.environ.get("USERPROFILE", str(Path.home()))
-    candidate = Path(userprofile) / "Downloads" / "colmap-x64-windows-cuda" / "bin" / "colmap.exe"
-    if candidate.exists():
-        return candidate
-    found = shutil.which("colmap")
-    return Path(found) if found else candidate
-
-
 def colmap_process_env():
     env = os.environ.copy()
+    for name in list(env):
+        normalized = name.upper()
+        if normalized.startswith("CONDA_") or normalized.startswith("_CONDA_"):
+            env.pop(name, None)
     env["PYTHONUTF8"] = "1"
     colmap = colmap_executable()
     path_parts = [str(colmap.parent), env.get("PATH", "")]
@@ -3337,6 +3330,41 @@ def openmvs_bin_dirs():
     return dirs
 
 
+def versioned_colmap_candidates(install_roots=None):
+    drive_root = Path(ROOT.anchor) if ROOT.anchor else ROOT
+    if install_roots is None:
+        install_roots = (
+            drive_root / "Tools" / "COLMAP",
+            drive_root / "tools" / "colmap",
+            drive_root / "COLMAP",
+        )
+    candidates = []
+    for install_root in map(Path, install_roots):
+        direct = install_root / "bin" / "colmap.exe"
+        if not install_root.is_dir():
+            continue
+
+        def version_key(path):
+            try:
+                return tuple(int(part) for part in path.name.split("."))
+            except ValueError:
+                return ()
+
+        version_dirs = sorted(
+            (path for path in install_root.iterdir() if path.is_dir()),
+            key=version_key,
+            reverse=True,
+        )
+        candidates.extend(
+            path / "bin" / "colmap.exe"
+            for path in version_dirs
+            if (path / "bin" / "colmap.exe").is_file()
+        )
+        if direct.is_file():
+            candidates.append(direct)
+    return candidates
+
+
 def openmvs_executable(name):
     exe_name = f"{name}.exe" if os.name == "nt" and not name.lower().endswith(".exe") else name
     for directory in openmvs_bin_dirs():
@@ -3348,14 +3376,16 @@ def openmvs_executable(name):
 
 
 def colmap_executable():
-    env_colmap = os.environ.get("COLMAP_EXE")
-    if env_colmap and Path(env_colmap).exists():
-        return Path(env_colmap)
+    for variable in ("COLMAP_EXE", "COLMAP_PATH"):
+        configured = os.environ.get(variable)
+        if configured and Path(configured).is_file():
+            return Path(configured)
     fallback = ROOT / "third_party" / "colmap" / "bin" / "colmap.exe"
     for candidate in (
         fallback,
         ROOT / "tools" / "colmap" / "bin" / "colmap.exe",
         ROOT / "colmap" / "bin" / "colmap.exe",
+        *versioned_colmap_candidates(),
     ):
         if candidate.exists():
             return candidate
@@ -4655,8 +4685,13 @@ def colmap_options_from_payload(payload):
 
 def colmap_image_input_path(dataset):
     dataset = Path(dataset)
-    input_dir = dataset / "input"
-    return input_dir if input_dir.exists() else dataset / "images"
+    for candidate in (dataset / "input", dataset / "images", dataset):
+        if candidate.exists() and any(
+            item.is_file() and item.suffix.lower() in IMAGE_EXTS
+            for item in candidate.iterdir()
+        ):
+            return candidate
+    return dataset / "images"
 
 
 def dataset_has_mixed_image_dimensions(dataset):
@@ -5150,9 +5185,12 @@ def run_training_job(job, run_convert, quality, overwrite):
         add_job_log(job, "OpenCV: OK")
         dataset = Path(job.get("dataset_path") or (DATASETS_DIR / job["scene"]))
         output = OUTPUT_DIR / job["output_scene"]
-        images_dir = dataset / "images"
+        images_dir = colmap_image_input_path(dataset)
         if not images_dir.exists() or not any(p.suffix.lower() in IMAGE_EXTS for p in images_dir.iterdir()):
             raise ValueError(f"No training images found: {images_dir}")
+        if images_dir.name == "input" and not (dataset / "images").exists() and not run_convert:
+            add_job_log(job, "Dataset contains input images but no undistorted images; enabling COLMAP conversion.")
+            run_convert = True
         if output.exists() and any(output.iterdir()):
             ensure_output_backend_compatible(job["output_scene"], backend)
             if overwrite:
@@ -5238,7 +5276,7 @@ def run_training_job(job, run_convert, quality, overwrite):
 def run_colmap_alignment_job(job):
     try:
         set_job_stage(job, "running", "colmap")
-        dataset = DATASETS_DIR / job["scene"]
+        dataset = Path(job.get("dataset_path") or (DATASETS_DIR / job["scene"])).resolve()
         images_dir = colmap_image_input_path(dataset)
         if not images_dir.exists() or not any(p.suffix.lower() in IMAGE_EXTS for p in images_dir.iterdir()):
             raise ValueError(f"No training images found: {images_dir}")
@@ -5271,15 +5309,16 @@ def run_colmap_alignment_job(job):
         add_job_log(job, f"ERROR: {exc}")
 
 
-def start_colmap_alignment(scene, options=None):
+def start_colmap_alignment(scene, options=None, dataset_path=None):
     scene = safe_name(scene)
     options = colmap_options_from_payload(options or {})
-    dataset = DATASETS_DIR / scene
+    dataset = Path(dataset_path).resolve() if dataset_path else DATASETS_DIR / scene
     job_id = uuid.uuid4().hex
     job = {
         "id": job_id,
         "kind": "colmap",
         "scene": scene,
+        "dataset_path": str(dataset),
         "iteration": 0,
         "mode": "colmap",
         "options": options,
@@ -5641,6 +5680,7 @@ def mesh_job_snapshot(job):
         "updated_at": job["updated_at"],
         "returncode": job.get("returncode"),
         "error": job.get("error"),
+        "dataset_path": job.get("dataset_path"),
         "output_mesh": job.get("output_mesh"),
         "download_url": job.get("download_url"),
         "glb_download_url": job.get("glb_download_url"),

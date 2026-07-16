@@ -71,6 +71,24 @@ def write_test_ply(path, xyz):
 
 
 class TrainingBackendTests(unittest.TestCase):
+    def test_conda_root_candidates_accepts_base_prefix(self):
+        prefix = Path("/opt/miniforge3")
+        with mock.patch.dict(server.os.environ, {"CONDA_PREFIX": str(prefix)}, clear=False):
+            candidates = server.conda_root_candidates()
+
+        self.assertIn(prefix, candidates)
+
+    def test_conda_root_candidates_accepts_named_environment_prefix(self):
+        root = Path("/opt/miniforge3")
+        with mock.patch.dict(
+            server.os.environ,
+            {"CONDA_PREFIX": str(root / "envs" / "gaussian_splatting")},
+            clear=False,
+        ):
+            candidates = server.conda_root_candidates()
+
+        self.assertIn(root, candidates)
+
     def test_form_items_reads_upload_fields_not_cgi_values(self):
         upload = FakeUploadItem("clip.mov", b"video")
         upload.value = b"video"
@@ -323,6 +341,29 @@ class TrainingBackendTests(unittest.TestCase):
         self.assertTrue(options["use_gpu"])
         self.assertEqual(options["mapper_ba_global_function_tolerance"], "0.000001")
         self.assertEqual(options["mapper_ba_global_max_num_iterations"], 50)
+
+    def test_colmap_executable_honors_colmap_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            executable = Path(tmp) / "colmap.exe"
+            executable.write_bytes(b"fixture")
+            with mock.patch.dict(
+                server.os.environ,
+                {"COLMAP_EXE": "", "COLMAP_PATH": str(executable)},
+                clear=False,
+            ):
+                self.assertEqual(server.colmap_executable(), executable)
+
+    def test_versioned_colmap_candidates_select_newest_version(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            install_root = Path(tmp) / "COLMAP"
+            for version in ("3.13.0", "4.1.0"):
+                executable = install_root / version / "bin" / "colmap.exe"
+                executable.parent.mkdir(parents=True)
+                executable.write_bytes(b"fixture")
+
+            candidates = server.versioned_colmap_candidates([install_root])
+
+            self.assertEqual(candidates[0], install_root / "4.1.0" / "bin" / "colmap.exe")
 
     def test_colmap_options_robust_preset_limits_global_ba_and_relaxes_registration(self):
         options = server.colmap_options_from_payload({"preset": "robust"})
@@ -679,7 +720,7 @@ class TrainingBackendTests(unittest.TestCase):
             (dataset / "images" / "frame.jpg").write_bytes(b"jpg")
             try:
                 def fake_convert(job, dataset_path, options):
-                    self.assertEqual(dataset_path, dataset)
+                    self.assertEqual(dataset_path, dataset.resolve())
                     self.assertEqual(options["preset"], "robust")
                     sparse0 = dataset_path / "sparse" / "0"
                     sparse0.mkdir(parents=True)
@@ -714,7 +755,7 @@ class TrainingBackendTests(unittest.TestCase):
                 self.assertEqual(job["status"], "done")
                 self.assertEqual(job["stage"], "done")
                 self.assertTrue(job["alignment"]["has_alignment"])
-                self.assertEqual(job["output_dir"], str(dataset))
+                self.assertEqual(job["output_dir"], str(dataset.resolve()))
                 self.assertTrue(any("COLMAP alignment complete" in line for line in job["log"]))
             finally:
                 server.DATASETS_DIR = original_datasets

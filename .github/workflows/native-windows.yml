@@ -1,0 +1,172 @@
+name: Native Windows
+
+on:
+  push:
+    branches:
+      - agent/native-desktop-0.3
+    paths:
+      - "native/**"
+      - "crop_editor/server.py"
+      - "crop_editor/video_extract.py"
+      - "crop_editor/tests/test_training_backends.py"
+      - "gaussian-splatting/**"
+      - "training_kit/**"
+      - "scripts/build_native.ps1"
+      - "scripts/bootstrap_3dgs_editor.ps1"
+      - "scripts/check_3dgs_env.ps1"
+      - "scripts/install_colmap.ps1"
+      - "scripts/stage_native_backend.ps1"
+      - ".github/workflows/native-windows.yml"
+      - "docs/NATIVE_MIGRATION.md"
+      - "docs/NATIVE_PARITY.md"
+      - "docs/COLMAP_SETUP.md"
+      - "README.md"
+  pull_request:
+    paths:
+      - "native/**"
+      - "crop_editor/server.py"
+      - "crop_editor/video_extract.py"
+      - "crop_editor/tests/test_training_backends.py"
+      - "gaussian-splatting/**"
+      - "training_kit/**"
+      - "scripts/build_native.ps1"
+      - "scripts/bootstrap_3dgs_editor.ps1"
+      - "scripts/check_3dgs_env.ps1"
+      - "scripts/install_colmap.ps1"
+      - "scripts/stage_native_backend.ps1"
+      - ".github/workflows/native-windows.yml"
+      - "docs/NATIVE_MIGRATION.md"
+      - "docs/NATIVE_PARITY.md"
+      - "docs/COLMAP_SETUP.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Qt 6 native preview
+    # Qt's win64_msvc2022_64 package must use the VS 2022 runner image.
+    runs-on: windows-2022
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7
+
+      - name: Install Qt 6.8
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.3"
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          cache: true
+
+      - name: Configure
+        shell: pwsh
+        run: >-
+          cmake -S native -B native/build-ci
+          -G "Visual Studio 17 2022" -A x64
+          -DBUILD_TESTING=ON
+          -DGSW_RELEASE_DATE=2026-07-16
+
+      - name: Build
+        shell: pwsh
+        run: cmake --build native/build-ci --config Release --parallel
+
+      - name: Test
+        shell: pwsh
+        run: ctest --test-dir native/build-ci -C Release --no-tests=error --output-on-failure
+
+      - name: Test native worker
+        shell: pwsh
+        run: python -B -m unittest native.worker.test_gsw_worker native.worker.test_import_preflight
+
+      - name: Parse setup scripts
+        shell: pwsh
+        run: |
+          $scripts = @(
+            "scripts/bootstrap_3dgs_editor.ps1",
+            "scripts/check_3dgs_env.ps1",
+            "scripts/install_colmap.ps1"
+          )
+          foreach ($script in $scripts) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $script).Path,
+              [ref]$tokens,
+              [ref]$errors
+            ) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error $_.Message }
+            }
+          }
+
+      - name: Install application
+        shell: pwsh
+        run: cmake --install native/build-ci --config Release --prefix native/artifact
+
+      - name: Deploy Qt runtime
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "native/artifact/bin/Gaussian Scene Workbench.exe"
+          windeployqt --release --no-translations --compiler-runtime $exe
+          Copy-Item native/README.md native/artifact/README.md
+          Copy-Item native/build_manifest.json native/artifact/build_manifest.json
+          Copy-Item docs/NATIVE_MIGRATION.md native/artifact/NATIVE_MIGRATION.md
+          Copy-Item docs/NATIVE_PARITY.md native/artifact/NATIVE_PARITY.md
+          Copy-Item docs/COLMAP_SETUP.md native/artifact/COLMAP_SETUP.md
+          Copy-Item LICENSE native/artifact/LICENSE
+          Copy-Item THIRD_PARTY_LICENSES.md native/artifact/THIRD_PARTY_LICENSES.md
+
+      - name: Stage native compute backend
+        shell: pwsh
+        run: >-
+          ./scripts/stage_native_backend.ps1
+          -SourceRoot $PWD
+          -DestinationRoot (Join-Path $PWD "native/artifact")
+
+      - name: Verify native-only package
+        shell: pwsh
+        run: |
+          python -B -c "from pathlib import Path; files=[Path('native/artifact/native/worker/gsw_worker.py'),Path('native/artifact/native/worker/import_preflight.py'),Path('native/artifact/crop_editor/server.py'),Path('native/artifact/crop_editor/video_extract.py')]; [compile(path.read_bytes(),str(path),'exec') for path in files]"
+          $forbidden = Get-ChildItem native/artifact -Recurse -File | Where-Object {
+            $_.Name -match '^(node|electron)\.exe$' -or
+            $_.Name -match '^Qt6WebEngine' -or
+            $_.Extension -in '.html', '.js', '.css'
+          }
+          if ($forbidden) {
+            $forbidden | Select-Object -ExpandProperty FullName
+            throw "Native artifact contains a forbidden web runtime file."
+          }
+          $exe = "native/artifact/bin/Gaussian Scene Workbench.exe"
+          if (-not (Test-Path -LiteralPath $exe)) {
+            throw "Native executable is missing."
+          }
+          $requiredBackend = @(
+            "native/artifact/native/worker/gsw_worker.py",
+            "native/artifact/native/worker/import_preflight.py",
+            "native/artifact/crop_editor/server.py",
+            "native/artifact/crop_editor/video_extract.py",
+            "native/artifact/scripts/check_3dgs_env.ps1",
+            "native/artifact/gaussian-splatting/train.py",
+            "native/artifact/training_kit/apply_local_fixes.bat",
+            "native/artifact/scripts/install_colmap.ps1",
+            "native/artifact/COLMAP_SETUP.md",
+            "native/artifact/backend_manifest.json"
+          )
+          $missingBackend = $requiredBackend | Where-Object { -not (Test-Path -LiteralPath $_) }
+          if ($missingBackend) {
+            $missingBackend
+            throw "Native artifact is missing required compute backend files."
+          }
+
+      - name: Upload Windows preview
+        uses: actions/upload-artifact@v7
+        with:
+          name: Gaussian-Scene-Workbench-0.3.1-native-preview-win-x64
+          path: native/artifact/
+          if-no-files-found: error
+          retention-days: 30

@@ -5,6 +5,21 @@
 中文名：**高斯场景研究工作台**
 日本語名：**ガウスシーン研究ワークベンチ**
 
+## Native 0.3 Development
+
+The application is being rebuilt as a fully native Qt 6/C++ desktop program on the [`agent/native-desktop-0.3`](https://github.com/fubukisama/Gaussian-Scene-Workbench/tree/agent/native-desktop-0.3) branch. This target does not embed HTML, a browser engine, Electron, Node.js, or a local web server.
+
+- Current version: `0.3.1-native-preview`
+- Updated: `2026-07-16`
+- Current native slice: guarded COLMAP reconstruction and training, screen-space Gaussian preview with point fallback, full-source rectangle/lasso/brush selection, delete undo/redo, and lossless cropped PLY export.
+- Renderer metric: honest CPU submission time; GPU/SIBR timing remains a tracked parity item.
+- Windows builds: the [Native Windows workflow](https://github.com/fubukisama/Gaussian-Scene-Workbench/actions/workflows/native-windows.yml) publishes a downloadable artifact for each successful branch update.
+- Architecture and parity plan: [docs/NATIVE_MIGRATION.md](docs/NATIVE_MIGRATION.md)
+- COLMAP install and discovery: [docs/COLMAP_SETUP.md](docs/COLMAP_SETUP.md)
+- Local build instructions: [native/README.md](native/README.md)
+
+The released `0.2.4` Electron application remains the stable fallback while the native branch reaches feature parity.
+
 ## Capabilities
 
 - Prepare image and video datasets with COLMAP-assisted reconstruction tools.
@@ -22,15 +37,15 @@ See [LICENSE](LICENSE) and [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 
 ## Windows Download
 
-- [Gaussian Scene Workbench 0.2.1 Windows x64](https://github.com/fubukisama/Gaussian-Scene-Workbench/releases/tag/v0.2.1)
-- Package: `Gaussian-Scene-Workbench-0.2.1-win-x64.zip`
+- [Gaussian Scene Workbench 0.2.4 Windows x64](https://github.com/fubukisama/Gaussian-Scene-Workbench/releases/tag/v0.2.4)
+- Package: `Gaussian-Scene-Workbench-0.2.4-win-x64.zip`
 - Verify the package with the matching `.sha256` Release asset.
 
 The large Windows package is distributed through GitHub Releases rather than committed to git.
 
 ## Quick Start
 
-1. Download and extract `Gaussian-Scene-Workbench-0.2.1-win-x64.zip` to a writable folder, preferably outside the system drive.
+1. Download and extract `Gaussian-Scene-Workbench-0.2.4-win-x64.zip` to a writable folder, preferably outside the system drive.
 2. Double-click `Setup Gaussian Scene Workbench.cmd` and choose a runtime folder. Press Enter to use the same-drive default, such as `E:\Gaussian-Scene-Workbench-Runtime`.
 3. Setup launches the application when it finishes. Later, start it with `Gaussian Scene Workbench.exe`.
 
@@ -40,12 +55,20 @@ To inspect the environment without installing components:
 .\Check Gaussian Scene Workbench Environment.cmd
 ```
 
+Install or update official COLMAP on a non-system drive:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install_colmap.ps1 -InstallRoot E:\Tools\COLMAP -Variant cuda
+```
+
 Existing `GS_EDITOR_*` environment variables, `gaussian_splatting` Conda environments, and legacy `3DGS-Editor-Runtime` installations remain supported.
 
 ## Repository Layout
 
 - `crop_editor/` - local web workbench and Python service.
 - `resources/app/` - Electron desktop application.
+- `native/` - Qt 6/C++ desktop replacement and native tests.
+- `docs/NATIVE_MIGRATION.md` - renderer, training, and web-runtime retirement plan.
 - `scripts/` - setup, packaging, environment repair, and utilities.
 - `training_kit/` - Windows conversion and training helpers.
 - `gaussian-splatting/` - bundled training and CUDA extension sources.
@@ -55,7 +78,7 @@ Generated folders such as `node_modules`, `datasets`, `output`, `desktop_app`, d
 ## Build A Release
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\update_version.ps1 -Version 36.10.1 -PackageVersion 0.2.1 -Bump none -Note "SIBR-style GPU performance meter"
+powershell -ExecutionPolicy Bypass -File scripts\update_version.ps1 -Version 36.10.4 -PackageVersion 0.2.4 -Bump none -Note "Add direct Gaussian PLY model export"
 powershell -ExecutionPolicy Bypass -File scripts\package_editor_release.ps1
 ```
 
@@ -88,8 +111,8 @@ COLMAP and Gaussian Splatting reconstruction require real camera motion and para
 
 ### Windows 下载
 
-- [Gaussian Scene Workbench 0.2.1 Windows x64](https://github.com/fubukisama/Gaussian-Scene-Workbench/releases/tag/v0.2.1)
-- 安装包：`Gaussian-Scene-Workbench-0.2.1-win-x64.zip`
+- [Gaussian Scene Workbench 0.2.4 Windows x64](https://github.com/fubukisama/Gaussian-Scene-Workbench/releases/tag/v0.2.4)
+- 安装包：`Gaussian-Scene-Workbench-0.2.4-win-x64.zip`
 - 使用 Release 中对应的 `.sha256` 文件校验安装包。
 
 ### 快速开始
@@ -118,6 +141,10 @@ powershell -ExecutionPolicy Bypass -File scripts\package_editor_release.ps1
 
 生成文件位于 `release\Gaussian-Scene-Workbench-<version>-win-x64.zip`。
 
+### 原生桌面版开发
+
+`0.3.1-native-preview` 已在 `agent/native-desktop-0.3` 分支继续重构。该版本使用 Qt 6/C++，不加载 HTML、Electron、Node.js 或本地网页服务器。当前原生工作流已支持带路径检查、缓存保护、实时日志、取消和输出验证的 COLMAP 重建；原生视口支持由缩放、旋转、透明度和 SH-DC 颜色驱动的屏幕空间高斯预览，并保留点模式回退；矩形、套索和可调半径连续笔刷均针对完整源数据工作。显示的是 CPU 提交耗时，不冒充 SIBR FPS。GitHub Actions 会在每次推送后自动生成 Windows 预览 artifact；迁移阶段保留 `0.2.4` 作为稳定版本。
+
 ---
 
 ## 日本語
@@ -141,8 +168,8 @@ powershell -ExecutionPolicy Bypass -File scripts\package_editor_release.ps1
 
 ### Windows 版
 
-- [Gaussian Scene Workbench 0.2.1 Windows x64](https://github.com/fubukisama/Gaussian-Scene-Workbench/releases/tag/v0.2.1)
-- パッケージ：`Gaussian-Scene-Workbench-0.2.1-win-x64.zip`
+- [Gaussian Scene Workbench 0.2.4 Windows x64](https://github.com/fubukisama/Gaussian-Scene-Workbench/releases/tag/v0.2.4)
+- パッケージ：`Gaussian-Scene-Workbench-0.2.4-win-x64.zip`
 
 1. パッケージをシステムドライブ以外の書き込み可能なフォルダに展開します。
 2. `Setup Gaussian Scene Workbench.cmd` を実行し、ランタイム先を選択します。既定値は同じドライブ上の `Gaussian-Scene-Workbench-Runtime` です。
@@ -155,3 +182,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package_editor_release.ps1
 ```
 
 既存の `GS_EDITOR_*` 環境変数、`gaussian_splatting` Conda 環境、旧 `3DGS-Editor-Runtime` は引き続き利用できます。
+
+### ネイティブデスクトップ版の開発
+
+`0.3.1-native-preview` は `agent/native-desktop-0.3` ブランチで開発中です。Qt 6/C++ を使用し、HTML、Electron、Node.js、ローカル Web サーバーを実行しません。ネイティブ COLMAP ワークフローはパス検証、既存キャッシュ保護、ライブログ、キャンセル、出力検証を備えています。現在のネイティブビューはスケール、回転、不透明度、SH-DC 色を使うスクリーンスペース Gaussian プレビューとポイント表示へのフォールバックを備え、矩形、投げ縄、半径可変ブラシは完全なソースデータを選択します。表示値は CPU の送信時間であり、SIBR FPS ではありません。GitHub Actions は各更新から Windows プレビュー artifact を生成します。機能が揃うまでは `0.2.4` を安定版として維持します。
