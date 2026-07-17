@@ -433,8 +433,119 @@ class TrainingBackendTests(unittest.TestCase):
             self.assertIn("--Mapper.min_num_matches", mapper)
             self.assertEqual(mapper[mapper.index("--Mapper.min_num_matches") + 1], "12")
             self.assertEqual(undistorter[1], "image_undistorter")
+            undistort_output = Path(undistorter[undistorter.index("--output_path") + 1])
+            self.assertEqual(undistort_output, dataset / ".colmap-undistorted")
+            self.assertNotEqual(undistort_output, dataset)
+            self.assertNotEqual(undistort_output / "images", dataset / "images")
 
-    def test_colmap_reset_removes_database_cache_for_overwrite_retrain(self):
+    def test_colmap_convert_stages_undistortion_before_replacing_training_images(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dataset = Path(tmp) / "dataset"
+            images = dataset / "images"
+            images.mkdir(parents=True)
+            (images / "frame.jpg").write_bytes(b"original")
+            observed_original = []
+
+            def fake_run(_job, command, _cwd, _backend):
+                if command[1] != "image_undistorter":
+                    return 0
+                observed_original.append((images / "frame.jpg").read_bytes())
+                staging = Path(command[command.index("--output_path") + 1])
+                (staging / "images").mkdir(parents=True)
+                (staging / "images" / "frame.jpg").write_bytes(b"undistorted")
+                sparse = staging / "sparse"
+                sparse.mkdir()
+                for name in ("cameras.bin", "images.bin", "points3D.bin"):
+                    (sparse / name).write_bytes(name.encode("ascii"))
+                return 0
+
+            with (
+                mock.patch.object(server, "colmap_executable", return_value=Path("colmap.exe")),
+                mock.patch.object(server, "run_logged", side_effect=fake_run),
+            ):
+                server.run_colmap_convert(
+                    {"log": []},
+                    dataset,
+                    server.colmap_options_from_payload({"reset": False}),
+                )
+
+            self.assertEqual(observed_original, [b"original"])
+            self.assertEqual((images / "frame.jpg").read_bytes(), b"undistorted")
+            self.assertTrue(server.dataset_has_colmap_scene(dataset))
+            self.assertTrue(server.dataset_has_colmap_scene(dataset / ".alignment_cache"))
+            self.assertEqual(list(dataset.glob(".colmap-undistorted-*")), [])
+            self.assertEqual(list(dataset.glob(".colmap-backup-*")), [])
+
+    def test_colmap_convert_failure_preserves_imported_training_images(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dataset = Path(tmp) / "dataset"
+            images = dataset / "images"
+            images.mkdir(parents=True)
+            (images / "frame.jpg").write_bytes(b"original")
+            sparse = dataset / "sparse" / "0"
+            sparse.mkdir(parents=True)
+            for name in ("cameras.bin", "images.bin", "points3D.bin"):
+                (sparse / name).write_bytes(b"original")
+            stereo = dataset / "stereo"
+            stereo.mkdir()
+            (stereo / "original.txt").write_bytes(b"original")
+
+            def fake_run(_job, command, _cwd, _backend):
+                if command[1] == "image_undistorter":
+                    staging = Path(command[command.index("--output_path") + 1])
+                    (staging / "images").mkdir(parents=True)
+                    (staging / "images" / "partial.jpg").write_bytes(b"partial")
+                    raise RuntimeError("undistorter failed")
+                return 0
+
+            with (
+                mock.patch.object(server, "colmap_executable", return_value=Path("colmap.exe")),
+                mock.patch.object(server, "run_logged", side_effect=fake_run),
+            ):
+                with self.assertRaisesRegex(RuntimeError, "undistorter failed"):
+                    server.run_colmap_convert(
+                        {"log": []},
+                        dataset,
+                        server.colmap_options_from_payload({"reset": False}),
+                    )
+
+            self.assertEqual((images / "frame.jpg").read_bytes(), b"original")
+            self.assertEqual((sparse / "cameras.bin").read_bytes(), b"original")
+            self.assertEqual((stereo / "original.txt").read_bytes(), b"original")
+            self.assertEqual(list(dataset.glob(".colmap-undistorted-*")), [])
+            self.assertEqual(list(dataset.glob(".colmap-backup-*")), [])
+
+    def test_colmap_publish_rolls_back_all_training_folders_on_rename_failure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dataset = (Path(tmp) / "dataset").resolve()
+            staging = dataset / ".colmap-undistorted-test"
+            for root, marker in ((dataset, b"original"), (staging, b"new")):
+                (root / "images").mkdir(parents=True)
+                (root / "images" / "frame.jpg").write_bytes(marker)
+                sparse = root / "sparse" / "0"
+                sparse.mkdir(parents=True)
+                for name in ("cameras.bin", "images.bin", "points3D.bin"):
+                    (sparse / name).write_bytes(marker)
+
+            original_rename = Path.rename
+
+            def fail_new_sparse(path, target):
+                if path == staging / "sparse":
+                    raise OSError("publish failed")
+                return original_rename(path, target)
+
+            with mock.patch.object(Path, "rename", autospec=True, side_effect=fail_new_sparse):
+                with self.assertRaisesRegex(OSError, "publish failed"):
+                    server.publish_undistorted_colmap_output(dataset, staging)
+
+            self.assertEqual((dataset / "images" / "frame.jpg").read_bytes(), b"original")
+            self.assertEqual(
+                (dataset / "sparse" / "0" / "cameras.bin").read_bytes(),
+                b"original",
+            )
+            self.assertEqual(list(dataset.glob(".colmap-backup-*")), [])
+
+    def test_colmap_reset_clears_work_cache_but_preserves_published_training_folders(self):
         with tempfile.TemporaryDirectory() as tmp:
             dataset = Path(tmp) / "dataset"
             for name in ("distorted", "sparse", "stereo"):
@@ -451,7 +562,9 @@ class TrainingBackendTests(unittest.TestCase):
                 server.run_colmap_convert(job, dataset, options)
 
             self.assertFalse((dataset / "database.db").exists())
-            self.assertFalse((dataset / "sparse" / "stale.txt").exists())
+            self.assertFalse((dataset / "distorted" / "stale.txt").exists())
+            self.assertTrue((dataset / "sparse" / "stale.txt").exists())
+            self.assertTrue((dataset / "stereo" / "stale.txt").exists())
             self.assertTrue((dataset / "distorted" / "sparse").exists())
 
     def test_colmap_disables_single_camera_for_mixed_image_dimensions(self):
@@ -459,7 +572,7 @@ class TrainingBackendTests(unittest.TestCase):
             dataset = Path(tmp) / "dataset"
             captured_options = {}
 
-            def capture_commands(_dataset, options):
+            def capture_commands(_dataset, options, _undistort_output=None):
                 captured_options.update(options)
                 return []
 

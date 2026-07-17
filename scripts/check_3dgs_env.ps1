@@ -116,11 +116,40 @@ function Test-Tool {
     }
 }
 
+function Test-OptionalTool {
+    param(
+        [string]$Name,
+        [string]$Executable,
+        [string[]]$Arguments = @()
+    )
+
+    Write-Host ""
+    Write-Host "== $Name (optional) =="
+    $Resolved = Get-Command $Executable -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $Resolved) {
+        Write-Host "$Executable was not found. It is only required when rebuilding CUDA extensions from source." -ForegroundColor Yellow
+        return
+    }
+
+    try {
+        & $Resolved.Source @Arguments
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "$Executable exited with code $LASTEXITCODE. Existing prebuilt runtime extensions can still be used." -ForegroundColor Yellow
+        }
+    } catch {
+        Write-Host "$Executable could not be queried: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+}
+
 Test-Tool -Name "NVIDIA GPU driver" -Executable "nvidia-smi"
 Test-Tool -Name "Python" -Executable $PythonExecutable -Arguments @("--version")
 Test-Tool -Name "Python media dependencies" -Executable $PythonExecutable -Arguments @(
     "-c",
     "import numpy, plyfile; print('numpy', numpy.__version__, 'plyfile', plyfile.__version__ if hasattr(plyfile, '__version__') else 'available')"
+)
+Test-Tool -Name "3DGS CUDA runtime" -Executable $PythonExecutable -Arguments @(
+    "-c",
+    "import torch, cv2; from PIL import Image; import diff_gaussian_rasterization, simple_knn, fused_ssim; assert torch.cuda.is_available(), 'PyTorch CUDA is unavailable'; print('torch', torch.__version__, 'cuda', torch.version.cuda, 'device', torch.cuda.get_device_name(0)); print('3DGS imports OK')"
 )
 Test-Tool -Name "Conda" -Executable $CondaExecutable -Arguments @("--version")
 Test-Tool -Name "Git" -Executable "git" -Arguments @("--version")
@@ -129,7 +158,7 @@ if ($ColmapExe) {
 } else {
     Test-Tool -Name "COLMAP" -Executable "colmap" -Arguments @("-h")
 }
-Test-Tool -Name "CUDA compiler" -Executable "nvcc" -Arguments @("--version")
+Test-OptionalTool -Name "CUDA compiler" -Executable "nvcc" -Arguments @("--version")
 
 Write-Host ""
 Write-Host "== Visual Studio C++ compiler =="

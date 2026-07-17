@@ -4,6 +4,7 @@ setlocal
 set "ROOT=%~dp0.."
 cd /d "%ROOT%"
 powershell -ExecutionPolicy Bypass -File "%ROOT%\scripts\check_3dgs_env.ps1"
+if errorlevel 1 exit /b %ERRORLEVEL%
 
 call "%~dp0activate_3dgs_env.bat"
 if errorlevel 1 exit /b %ERRORLEVEL%

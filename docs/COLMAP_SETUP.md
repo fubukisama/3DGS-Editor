@@ -54,7 +54,24 @@ The current native preview is validated against official COLMAP `4.1.0` with CUD
 ccd2f8c5b44f3e0ce645170d6abad30ff763ede97eeb0e6e23af1993e624e64b
 ```
 
-An end-to-end worker smoke test on an RTX 4070 Laptop GPU registered 16 of 16 synthetic multi-depth views, reconstructed 14,695 sparse points, and reported a mean reprojection error of 0.134 px. This verifies executable discovery, CUDA feature extraction, GPU matching, mapping, undistortion, output validation, and alignment-cache creation. It is an integration check, not a photogrammetric quality benchmark.
+The deterministic end-to-end worker test can start from either photos or a
+video. The video path exercises frame extraction before COLMAP and 3DGS:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File native\tests\run_training_e2e_smoke.ps1 -MediaMode Video
+```
+
+On an RTX 4070 Laptop GPU, the validated video run registered 16 of 16
+multi-depth views, reconstructed 12,779 sparse points with 0.760 px mean
+reprojection error, completed 1,000 3DGS steps at 30.17 dB training PSNR,
+produced 33,278 Gaussians, and reopened the binary PLY in the native desktop
+application. These numbers are integration evidence, not photogrammetric
+quality targets.
+
+COLMAP undistortion is written to a validated staging directory before
+`images/`, `sparse/`, and `stereo/` are replaced. This prevents an imported
+`dataset/images` directory from also being used as the undistorter's output and
+keeps the original trainable folders intact when COLMAP fails.
 
 ## Verification
 

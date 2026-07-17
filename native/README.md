@@ -63,6 +63,23 @@ Generate the deterministic Gaussian renderer QA project:
 powershell -ExecutionPolicy Bypass -File native\tests\generate_gaussian_visual_fixture.ps1
 ```
 
+Run the complete media-to-model smoke test through the same worker used by the
+native desktop application:
+
+```powershell
+# Photo import -> COLMAP -> 1000-step 3DGS -> PLY/checkpoint -> native load
+powershell -ExecutionPolicy Bypass -File native\tests\run_training_e2e_smoke.ps1
+
+# Video import -> frame extraction -> the same reconstruction/training checks
+powershell -ExecutionPolicy Bypass -File native\tests\run_training_e2e_smoke.ps1 -MediaMode Video
+```
+
+Each run uses a new directory below `.tools/training-e2e/`. It generates 16
+translated multi-depth views, imports them transactionally, validates the
+Gaussian PLY fields and checkpoint, and opens the resulting project with the
+native executable when a local build is available. Use `-WorkRoot` to choose a
+different empty directory; the script never deletes an existing run.
+
 ## License boundary
 
 LichtFeld Studio is used as an architecture and workflow reference. Its source is GPL-3.0-or-later. No LichtFeld source code is copied into this MIT-licensed native preview. Any future direct reuse must be isolated and licensed compatibly before it is merged.

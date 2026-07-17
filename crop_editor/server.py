@@ -4786,12 +4786,13 @@ def append_option(command, flag, value, include=True):
         command.extend([flag, str(value)])
 
 
-def colmap_convert_commands(dataset, options):
+def colmap_convert_commands(dataset, options, undistort_output=None):
     dataset = Path(dataset)
     colmap = colmap_executable()
     if not colmap:
         raise RuntimeError("Missing COLMAP executable")
     image_path = colmap_image_input_path(dataset)
+    undistort_output = Path(undistort_output) if undistort_output else dataset / ".colmap-undistorted"
     database_path = dataset / "distorted" / "database.db"
     sparse_path = dataset / "distorted" / "sparse"
     use_gpu = "1" if options["use_gpu"] else "0"
@@ -4869,7 +4870,7 @@ def colmap_convert_commands(dataset, options):
         "--input_path",
         sparse_path / "0",
         "--output_path",
-        dataset,
+        undistort_output,
         "--output_type",
         "COLMAP",
     ]
@@ -4892,6 +4893,67 @@ def normalize_undistorted_sparse(dataset):
         shutil.move(str(child), str(target))
 
 
+def validate_undistorted_colmap_output(output):
+    output = Path(output)
+    normalize_undistorted_sparse(output)
+    images = output / "images"
+    if not images.is_dir() or not any(
+        item.is_file() and item.suffix.lower() in IMAGE_EXTS
+        for item in images.iterdir()
+    ):
+        raise RuntimeError("COLMAP image undistortion produced no training images")
+    if not dataset_has_colmap_scene(output):
+        raise RuntimeError("COLMAP image undistortion produced an incomplete sparse model")
+
+
+def publish_undistorted_colmap_output(dataset, staging):
+    """Replace trainable COLMAP folders only after staging has been validated."""
+    dataset = Path(dataset).resolve()
+    staging = Path(staging).resolve()
+    if staging.parent != dataset:
+        raise ValueError("COLMAP undistortion staging must be a direct dataset child")
+
+    required = ("images", "sparse")
+    optional = ("stereo",)
+    for name in required:
+        if not (staging / name).is_dir():
+            raise RuntimeError(f"COLMAP image undistortion is missing {name}")
+
+    backup = dataset / f".colmap-backup-{uuid.uuid4().hex}"
+    backup.mkdir()
+    moved_existing = []
+    published = []
+    try:
+        for name in (*required, *optional):
+            target = dataset / name
+            if target.exists():
+                target.rename(backup / name)
+                moved_existing.append(name)
+        for name in (*required, *optional):
+            source = staging / name
+            if source.exists():
+                source.rename(dataset / name)
+                published.append(name)
+        if not dataset_has_colmap_scene(dataset):
+            raise RuntimeError("Published COLMAP output has an incomplete sparse model")
+    except Exception:
+        for name in reversed(published):
+            target = dataset / name
+            if target.is_dir():
+                shutil.rmtree(target)
+            elif target.exists():
+                target.unlink()
+        for name in reversed(moved_existing):
+            source = backup / name
+            if source.exists():
+                source.rename(dataset / name)
+        if backup.exists() and not any(backup.iterdir()):
+            backup.rmdir()
+        raise
+    else:
+        shutil.rmtree(backup)
+
+
 def run_colmap_convert(job, dataset, options):
     dataset = Path(dataset)
     options = dict(options)
@@ -4900,7 +4962,9 @@ def run_colmap_convert(job, dataset, options):
         if database.exists():
             add_job_log(job, f"Removing stale COLMAP cache: {database}")
             database.unlink()
-        for child in ("distorted", "sparse", "stereo"):
+        # Only COLMAP's disposable work cache is cleared up front. Published
+        # images/sparse/stereo stay usable until validated replacements exist.
+        for child in ("distorted",):
             path = dataset / child
             if path.exists():
                 add_job_log(job, f"Removing stale COLMAP cache: {path}")
@@ -4910,9 +4974,20 @@ def run_colmap_convert(job, dataset, options):
         options["single_camera"] = False
         add_job_log(job, "WARNING: Detected mixed image dimensions; disabling COLMAP single_camera to avoid CAMERA_SINGLE_DIM_ERROR.")
     add_job_log(job, f"COLMAP preset: {options['preset']}, matching: {options['matching']}, camera: {options['camera_model']}")
-    for command in colmap_convert_commands(dataset, options):
-        run_logged(job, command, ROOT, "3dgs")
-    normalize_undistorted_sparse(dataset)
+    undistort_staging = dataset / f".colmap-undistorted-{uuid.uuid4().hex}"
+    commands = colmap_convert_commands(dataset, options, undistort_staging)
+    try:
+        for command in commands:
+            run_logged(job, command, ROOT, "3dgs")
+        if commands:
+            validate_undistorted_colmap_output(undistort_staging)
+            publish_undistorted_colmap_output(dataset, undistort_staging)
+        else:
+            # Unit-test and repair callers may provide an already published model.
+            normalize_undistorted_sparse(dataset)
+    finally:
+        if undistort_staging.exists():
+            shutil.rmtree(undistort_staging)
     save_alignment_cache(dataset, job)
 
 
