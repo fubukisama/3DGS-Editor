@@ -112,15 +112,15 @@ int AppTheme::rescaledDockExtent(const int currentExtent,
 }
 
 int AppTheme::dockTitleFontPixelSize(const int scalePercent) {
-  return scaled(13, scalePercent);
+  return scaled(15, scalePercent);
 }
 
 int AppTheme::dockTitleHeight(const int scalePercent) {
-  return scaled(20, scalePercent);
+  return scaled(21, scalePercent);
 }
 
 int AppTheme::dockTitleButtonSize(const int scalePercent) {
-  return scaled(14, scalePercent);
+  return scaled(15, scalePercent);
 }
 
 int AppTheme::loadScalePercent(const QScreen *screen) {
@@ -321,7 +321,7 @@ QToolTip { background: #2c3033; color: #ffffff; border: 1px solid #555b60; paddi
   replace(QStringLiteral("@HEADER_PAD@"), 6);
   replace(QStringLiteral("@DOCK_FALLBACK_V@"), 1);
   replace(QStringLiteral("@DOCK_FALLBACK_H@"), 6);
-  replace(QStringLiteral("@DOCK_FALLBACK_FONT@"), 13);
+  replace(QStringLiteral("@DOCK_FALLBACK_FONT@"), 15);
   replace(QStringLiteral("@TAB_V@"), 5);
   replace(QStringLiteral("@TAB_H@"), 12);
   replace(QStringLiteral("@SCROLL@"), 10);

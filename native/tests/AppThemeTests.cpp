@@ -54,17 +54,17 @@ void AppThemeTests::fitsRequestedWindowResolutionInsideTheScreen() {
 }
 
 void AppThemeTests::keepsDockTitlesCompactAcrossScales() {
-  QCOMPARE(AppTheme::dockTitleFontPixelSize(90), 12);
-  QCOMPARE(AppTheme::dockTitleHeight(90), 18);
-  QCOMPARE(AppTheme::dockTitleButtonSize(90), 13);
+  QCOMPARE(AppTheme::dockTitleFontPixelSize(90), 14);
+  QCOMPARE(AppTheme::dockTitleHeight(90), 19);
+  QCOMPARE(AppTheme::dockTitleButtonSize(90), 14);
 
-  QCOMPARE(AppTheme::dockTitleFontPixelSize(100), 13);
-  QCOMPARE(AppTheme::dockTitleHeight(100), 20);
-  QCOMPARE(AppTheme::dockTitleButtonSize(100), 14);
+  QCOMPARE(AppTheme::dockTitleFontPixelSize(100), 15);
+  QCOMPARE(AppTheme::dockTitleHeight(100), 21);
+  QCOMPARE(AppTheme::dockTitleButtonSize(100), 15);
 
-  QCOMPARE(AppTheme::dockTitleFontPixelSize(150), 20);
-  QCOMPARE(AppTheme::dockTitleHeight(150), 30);
-  QCOMPARE(AppTheme::dockTitleButtonSize(150), 21);
+  QCOMPARE(AppTheme::dockTitleFontPixelSize(150), 23);
+  QCOMPARE(AppTheme::dockTitleHeight(150), 32);
+  QCOMPARE(AppTheme::dockTitleButtonSize(150), 23);
 }
 
 void AppThemeTests::rescalesDockExtentWhenDensityChanges() {
