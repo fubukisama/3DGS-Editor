@@ -124,7 +124,15 @@ if(BUILD_TESTING)
       --smoke-test-import-dialog
       --media-source "${CMAKE_CURRENT_BINARY_DIR}/smoke-import.jpg"
   )
-  set_tests_properties(native_application_launch native_metashape_import_entry PROPERTIES
+  add_test(
+    NAME native_adaptive_display_layout
+    COMMAND GaussianSceneWorkbench --smoke-test-display-layout
+  )
+  set_tests_properties(
+    native_application_launch
+    native_metashape_import_entry
+    native_adaptive_display_layout
+    PROPERTIES
     TIMEOUT 15
     ENVIRONMENT
       "QT_OPENGL=software;QT_PLUGIN_PATH=$<TARGET_FILE_DIR:Qt6::Core>/../plugins;QT_QPA_PLATFORM=windows;QT_QPA_PLATFORM_PLUGIN_PATH="
@@ -211,4 +219,21 @@ if(BUILD_TESTING)
       target_compile_options(gsw_backend_locator_tests PRIVATE /W4 /permissive- /utf-8 /Zc:__cplusplus)
     endif()
     add_test(NAME backend_locator COMMAND gsw_backend_locator_tests)
+
+    qt_add_executable(gsw_app_theme_tests
+      tests/AppThemeTests.cpp
+      src/AppTheme.cpp
+      src/AppTheme.h
+    )
+    target_include_directories(gsw_app_theme_tests PRIVATE src)
+    target_link_libraries(gsw_app_theme_tests PRIVATE
+      Qt6::Core
+      Qt6::Gui
+      Qt6::Widgets
+      Qt6::Test
+    )
+    if(MSVC)
+      target_compile_options(gsw_app_theme_tests PRIVATE /W4 /permissive- /utf-8 /Zc:__cplusplus)
+    endif()
+    add_test(NAME app_theme COMMAND gsw_app_theme_tests)
 endif()

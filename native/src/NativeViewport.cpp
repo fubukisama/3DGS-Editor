@@ -1165,23 +1165,40 @@ void NativeViewport::drawOverlay(QPainter &painter, const double frameMillisecon
                       formatCount(mEditModel.deletedCount()));
   }
   const QFontMetrics metrics(font());
+  const int lineHeight = metrics.height();
+  const int headerPaddingX = 12;
+  const int headerPaddingY = 8;
+  const int lineGap = 2;
   const int widthHint = std::max({metrics.horizontalAdvance(project), metrics.horizontalAdvance(sceneName),
-                                  metrics.horizontalAdvance(count)}) + 28;
-  const QRect headerRect(12, 12, std::clamp(widthHint, 180, qMax(180, width() - 24)), 70);
+                                  metrics.horizontalAdvance(count)}) + headerPaddingX * 2 + 4;
+  const int headerHeight =
+      headerPaddingY * 2 + lineHeight * 3 + lineGap * 2;
+  const QRect headerRect(12, 12,
+                         std::clamp(widthHint, 180, qMax(180, width() - 24)),
+                         headerHeight);
   painter.drawRoundedRect(headerRect, 4, 4);
 
   painter.setPen(QColor(232, 235, 236));
   QFont strongFont = font();
   strongFont.setWeight(QFont::DemiBold);
   painter.setFont(strongFont);
-  painter.drawText(headerRect.adjusted(12, 8, -12, -42), Qt::AlignLeft | Qt::AlignVCenter,
-                   metrics.elidedText(project, Qt::ElideMiddle, headerRect.width() - 24));
+  QRect lineRect(headerRect.left() + headerPaddingX,
+                 headerRect.top() + headerPaddingY,
+                 headerRect.width() - headerPaddingX * 2, lineHeight);
+  painter.drawText(lineRect, Qt::AlignLeft | Qt::AlignVCenter,
+                   metrics.elidedText(project, Qt::ElideMiddle,
+                                      lineRect.width()));
   painter.setFont(font());
   painter.setPen(QColor(174, 181, 185));
-  painter.drawText(headerRect.adjusted(12, 30, -12, -20), Qt::AlignLeft | Qt::AlignVCenter,
-                   metrics.elidedText(sceneName, Qt::ElideMiddle, headerRect.width() - 24));
+  lineRect.translate(0, lineHeight + lineGap);
+  painter.drawText(lineRect, Qt::AlignLeft | Qt::AlignVCenter,
+                   metrics.elidedText(sceneName, Qt::ElideMiddle,
+                                      lineRect.width()));
   painter.setPen(QColor(102, 193, 168));
-  painter.drawText(headerRect.adjusted(12, 49, -12, -4), Qt::AlignLeft | Qt::AlignVCenter, count);
+  lineRect.translate(0, lineHeight + lineGap);
+  painter.drawText(lineRect, Qt::AlignLeft | Qt::AlignVCenter,
+                   metrics.elidedText(count, Qt::ElideRight,
+                                      lineRect.width()));
 
   const QString renderer =
       mRenderMode == RenderMode::Gaussians && gaussianRenderingAvailable()
@@ -1191,7 +1208,9 @@ void NativeViewport::drawOverlay(QPainter &painter, const double frameMillisecon
                              .arg(renderer)
                              .arg(frameMilliseconds, 0, 'f', 2);
   const int metricWidth = metrics.horizontalAdvance(metric) + 24;
-  const QRect metricRect(12, height() - 38, std::min(metricWidth, width() - 24), 26);
+  const int badgeHeight = std::max(26, lineHeight + 10);
+  const QRect metricRect(12, height() - badgeHeight - 12,
+                         std::min(metricWidth, width() - 24), badgeHeight);
   painter.setPen(Qt::NoPen);
   painter.setBrush(QColor(17, 19, 21, 225));
   painter.drawRoundedRect(metricRect, 4, 4);
@@ -1201,7 +1220,7 @@ void NativeViewport::drawOverlay(QPainter &painter, const double frameMillisecon
 
   const QString mode = mSelectionBusy ? QStringLiteral("选择处理中") : modeLabel(mMode);
   const int modeWidth = metrics.horizontalAdvance(mode) + 22;
-  const QRect modeRect(width() - modeWidth - 12, 12, modeWidth, 26);
+  const QRect modeRect(width() - modeWidth - 12, 12, modeWidth, badgeHeight);
   painter.setPen(Qt::NoPen);
   painter.setBrush(QColor(49, 93, 88, 235));
   painter.drawRoundedRect(modeRect, 4, 4);

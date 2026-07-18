@@ -35,10 +35,12 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QMoveEvent>
 #include <QPlainTextEdit>
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QRegularExpression>
+#include <QResizeEvent>
 #include <QScreen>
 #include <QScrollArea>
 #include <QSettings>
@@ -234,8 +236,16 @@ MainWindow::MainWindow(QWidget *parent)
       mProcessSupervisor(this) {
   mUiScalePercent = qApp->property("gswUiScalePercent").toInt();
   if (mUiScalePercent <= 0) {
-    mUiScalePercent = 90;
+    mUiScalePercent = 100;
   }
+  mAutomaticUiScale =
+      qApp->property("gswAutomaticUiScale").toBool();
+
+  mUiAdaptTimer = new QTimer(this);
+  mUiAdaptTimer->setSingleShot(true);
+  mUiAdaptTimer->setInterval(160);
+  connect(mUiAdaptTimer, &QTimer::timeout, this,
+          &MainWindow::refreshAutomaticUiScale);
 
   setObjectName(QStringLiteral("mainWindow"));
   setWindowTitle(QStringLiteral("Native Preview"));
@@ -255,8 +265,19 @@ MainWindow::MainWindow(QWidget *parent)
   connectServices();
   restoreWindowState();
   applyUiScale(mUiScalePercent, false);
+  scheduleAutomaticUiScale();
   updateWorkspaceUi();
   appendTaskEvent(QStringLiteral("原生桌面预览版已启动。"));
+}
+
+void MainWindow::moveEvent(QMoveEvent *event) {
+  QMainWindow::moveEvent(event);
+  scheduleAutomaticUiScale();
+}
+
+void MainWindow::resizeEvent(QResizeEvent *event) {
+  QMainWindow::resizeEvent(event);
+  scheduleAutomaticUiScale();
 }
 
 bool MainWindow::openProjectFile(const QString &filePath) {
@@ -649,19 +670,63 @@ void MainWindow::createMenus() {
   viewMenu->addSeparator();
   viewMenu->addAction(actions().at(6));
 
-  QMenu *scaleMenu = viewMenu->addMenu(QStringLiteral("界面缩放"));
+  QMenu *displayMenu = viewMenu->addMenu(QStringLiteral("显示与适配"));
+  displayMenu->setObjectName(QStringLiteral("displaySettingsMenu"));
+  mAutoScaleAction =
+      displayMenu->addAction(QStringLiteral("自动适配界面（推荐）"));
+  mAutoScaleAction->setObjectName(QStringLiteral("autoUiScaleAction"));
+  mAutoScaleAction->setCheckable(true);
+  mAutoScaleAction->setChecked(mAutomaticUiScale);
+  mAutoScaleAction->setToolTip(
+      QStringLiteral("根据当前屏幕和窗口分辨率自动调整文字、控件与图标"));
+  connect(mAutoScaleAction, &QAction::triggered, this,
+          [this]() { setAutomaticUiScale(true, true); });
+
+  QMenu *scaleMenu =
+      displayMenu->addMenu(QStringLiteral("手动界面比例"));
   mScaleActionGroup = new QActionGroup(this);
   mScaleActionGroup->setExclusive(true);
-  const QList<int> scales = {75, 80, 85, 90, 100, 110, 125};
+  const QList<int> scales = {90, 100, 110, 125, 150};
   for (const int scale : scales) {
     auto *action = scaleMenu->addAction(QStringLiteral("%1%").arg(scale));
     action->setCheckable(true);
     action->setData(scale);
-    action->setChecked(scale == mUiScalePercent);
+    action->setChecked(!mAutomaticUiScale && scale == mUiScalePercent);
     mScaleActionGroup->addAction(action);
   }
   connect(mScaleActionGroup, &QActionGroup::triggered, this,
-          [this](QAction *action) { applyUiScale(action->data().toInt(), true); });
+          [this](QAction *action) {
+            mAutomaticUiScale = false;
+            AppTheme::saveScaleMode(UiScaleMode::Manual);
+            applyUiScale(action->data().toInt(), true);
+          });
+
+  displayMenu->addSeparator();
+  QMenu *resolutionMenu =
+      displayMenu->addMenu(QStringLiteral("窗口分辨率"));
+  auto *fitWindowAction =
+      resolutionMenu->addAction(QStringLiteral("适合当前屏幕（自动）"));
+  fitWindowAction->setObjectName(QStringLiteral("fitWindowToScreenAction"));
+  connect(fitWindowAction, &QAction::triggered, this,
+          &MainWindow::fitWindowToScreen);
+
+  resolutionMenu->addSeparator();
+  const QList<QSize> resolutions = {
+      QSize(1280, 720), QSize(1600, 900), QSize(1920, 1080),
+      QSize(2560, 1440)};
+  for (const QSize &resolution : resolutions) {
+    auto *action = resolutionMenu->addAction(
+        QStringLiteral("%1 × %2")
+            .arg(resolution.width())
+            .arg(resolution.height()));
+    action->setObjectName(
+        QStringLiteral("windowResolution%1x%2Action")
+            .arg(resolution.width())
+            .arg(resolution.height()));
+    action->setData(resolution);
+    connect(action, &QAction::triggered, this,
+            [this, resolution]() { applyWindowResolution(resolution); });
+  }
 
   QMenu *helpMenu = menuBar()->addMenu(QStringLiteral("帮助"));
   auto *aboutAction = helpMenu->addAction(QStringLiteral("关于 Gaussian Scene Workbench"));
@@ -688,36 +753,35 @@ void MainWindow::createToolBars() {
   mainToolbar->addAction(mImportDatasetAction);
   mainToolbar->addAction(mImportSceneAction);
   mainToolbar->addSeparator();
-  mainToolbar->addAction(actions().at(3));
   mainToolbar->addAction(mReconstructAction);
   mainToolbar->addAction(mTrainAction);
   mainToolbar->addAction(mStopAction);
-  mainToolbar->addSeparator();
-  mainToolbar->addAction(actions().at(4));
 
-  auto *renderToolbar = addToolBar(QStringLiteral("渲染模式"));
-  renderToolbar->setObjectName(QStringLiteral("renderToolbar"));
-  renderToolbar->setMovable(false);
-  renderToolbar->setToolButtonStyle(Qt::ToolButtonTextOnly);
-  renderToolbar->addAction(mGaussianRenderAction);
-  renderToolbar->addAction(mPointRenderAction);
-  renderToolbar->addSeparator();
-  renderToolbar->addAction(mShowCamerasAction);
+  addToolBarBreak(Qt::TopToolBarArea);
+  mRenderToolbar = addToolBar(QStringLiteral("渲染模式"));
+  mRenderToolbar->setObjectName(QStringLiteral("renderToolbar"));
+  mRenderToolbar->setMovable(false);
+  mRenderToolbar->setToolButtonStyle(Qt::ToolButtonTextOnly);
+  mRenderToolbar->addAction(mGaussianRenderAction);
+  mRenderToolbar->addAction(mPointRenderAction);
+  mRenderToolbar->addSeparator();
+  mRenderToolbar->addAction(mShowCamerasAction);
 
-  auto *editToolbar = addToolBar(QStringLiteral("场景编辑"));
-  editToolbar->setObjectName(QStringLiteral("editToolbar"));
-  editToolbar->setMovable(false);
-  editToolbar->setToolButtonStyle(Qt::ToolButtonIconOnly);
-  editToolbar->addAction(mInspectAction);
-  editToolbar->addAction(mRectangleAction);
-  editToolbar->addAction(mLassoAction);
-  editToolbar->addAction(mBrushAction);
-  editToolbar->addAction(mVisibleOnlyAction);
-  editToolbar->addSeparator();
-  auto *brushRadiusLabel = new QLabel(QStringLiteral("半径"), editToolbar);
+  mSelectionToolbar = addToolBar(QStringLiteral("选择模式"));
+  mSelectionToolbar->setObjectName(QStringLiteral("selectionToolbar"));
+  mSelectionToolbar->setMovable(false);
+  mSelectionToolbar->setToolButtonStyle(Qt::ToolButtonTextOnly);
+  mSelectionToolbar->addAction(mInspectAction);
+  mSelectionToolbar->addAction(mRectangleAction);
+  mSelectionToolbar->addAction(mLassoAction);
+  mSelectionToolbar->addAction(mBrushAction);
+  mSelectionToolbar->addAction(mVisibleOnlyAction);
+  mSelectionToolbar->addSeparator();
+  auto *brushRadiusLabel =
+      new QLabel(QStringLiteral("半径"), mSelectionToolbar);
   brushRadiusLabel->setObjectName(QStringLiteral("mutedLabel"));
-  editToolbar->addWidget(brushRadiusLabel);
-  mBrushRadiusSpin = new QSpinBox(editToolbar);
+  mSelectionToolbar->addWidget(brushRadiusLabel);
+  mBrushRadiusSpin = new QSpinBox(mSelectionToolbar);
   mBrushRadiusSpin->setObjectName(QStringLiteral("brushRadiusSpin"));
   mBrushRadiusSpin->setAccessibleName(QStringLiteral("笔刷半径"));
   mBrushRadiusSpin->setRange(4, 256);
@@ -738,15 +802,23 @@ void MainWindow::createToolBars() {
             QSettings().setValue(QStringLiteral("selection/brushRadius"),
                                  radius);
           });
-  editToolbar->addWidget(mBrushRadiusSpin);
-  editToolbar->addSeparator();
-  editToolbar->addAction(mClearSelectionAction);
-  editToolbar->addAction(mInvertSelectionAction);
-  editToolbar->addAction(mDeleteSelectionAction);
-  editToolbar->addSeparator();
-  editToolbar->addAction(mUndoEditAction);
-  editToolbar->addAction(mRedoEditAction);
-  editToolbar->addAction(mExportCropAction);
+  mSelectionToolbar->addWidget(mBrushRadiusSpin);
+
+  mEditToolbar = addToolBar(QStringLiteral("编辑操作"));
+  mEditToolbar->setObjectName(QStringLiteral("editToolbar"));
+  mEditToolbar->setMovable(false);
+  mEditToolbar->setToolButtonStyle(Qt::ToolButtonIconOnly);
+  mEditToolbar->addAction(mClearSelectionAction);
+  mEditToolbar->addAction(mInvertSelectionAction);
+  mEditToolbar->addAction(mDeleteSelectionAction);
+  mEditToolbar->addSeparator();
+  mEditToolbar->addAction(mUndoEditAction);
+  mEditToolbar->addAction(mRedoEditAction);
+  mEditToolbar->addAction(mExportCropAction);
+
+  mRenderToolbar->hide();
+  mSelectionToolbar->hide();
+  mEditToolbar->hide();
 }
 
 void MainWindow::createProjectDock() {
@@ -870,7 +942,7 @@ void MainWindow::createStatusBar() {
   mEditStatus = new QLabel(QStringLiteral("选择 0 | 删除 0"), this);
   mEditStatus->setObjectName(QStringLiteral("mutedLabel"));
   mScaleStatus = new QLabel(this);
-  mScaleStatus->setObjectName(QStringLiteral("mutedLabel"));
+  mScaleStatus->setObjectName(QStringLiteral("uiScaleStatus"));
   statusBar()->addWidget(mProjectStatus, 1);
   statusBar()->addPermanentWidget(mRendererStatus);
   statusBar()->addPermanentWidget(mEditStatus);
@@ -1221,18 +1293,127 @@ void MainWindow::resetDockLayout() {
 }
 
 void MainWindow::applyUiScale(const int scalePercent, const bool persist) {
-  mUiScalePercent = scalePercent;
+  mUiScalePercent = std::clamp(scalePercent, 90, 150);
   AppTheme::apply(*qApp, mUiScalePercent, persist);
-  const QSize iconSize(AppTheme::scaled(19, mUiScalePercent), AppTheme::scaled(19, mUiScalePercent));
+  const QSize iconSize(AppTheme::scaled(20, mUiScalePercent),
+                       AppTheme::scaled(20, mUiScalePercent));
   for (QToolBar *toolbar : findChildren<QToolBar *>()) {
     toolbar->setIconSize(iconSize);
   }
-  mScaleStatus->setText(QStringLiteral("UI %1%").arg(mUiScalePercent));
+  if (mBrushRadiusSpin != nullptr) {
+    mBrushRadiusSpin->setMinimumWidth(
+        AppTheme::scaled(86, mUiScalePercent));
+    mBrushRadiusSpin->setMaximumWidth(
+        AppTheme::scaled(120, mUiScalePercent));
+  }
+  updateScaleStatus();
+  if (mAutoScaleAction != nullptr) {
+    mAutoScaleAction->setChecked(mAutomaticUiScale);
+  }
   if (mScaleActionGroup != nullptr) {
     for (QAction *action : mScaleActionGroup->actions()) {
-      action->setChecked(action->data().toInt() == mUiScalePercent);
+      action->setChecked(!mAutomaticUiScale &&
+                         action->data().toInt() == mUiScalePercent);
     }
   }
+}
+
+void MainWindow::setAutomaticUiScale(const bool automatic,
+                                     const bool persist) {
+  mAutomaticUiScale = automatic;
+  if (persist) {
+    AppTheme::saveScaleMode(automatic ? UiScaleMode::Automatic
+                                      : UiScaleMode::Manual);
+  }
+  if (automatic) {
+    refreshAutomaticUiScale();
+  } else {
+    applyUiScale(mUiScalePercent, false);
+  }
+}
+
+void MainWindow::refreshAutomaticUiScale() {
+  if (!mAutomaticUiScale) {
+    updateScaleStatus();
+    return;
+  }
+  QScreen *activeScreen = screen();
+  if (activeScreen == nullptr) {
+    activeScreen = QGuiApplication::primaryScreen();
+  }
+  const QSize availableSize =
+      activeScreen == nullptr ? QSize{}
+                              : activeScreen->availableGeometry().size();
+  const int recommended =
+      AppTheme::recommendedScalePercent(availableSize, size());
+  if (recommended != mUiScalePercent) {
+    applyUiScale(recommended, false);
+  } else {
+    updateScaleStatus();
+  }
+}
+
+void MainWindow::scheduleAutomaticUiScale() {
+  if (mAutomaticUiScale && mUiAdaptTimer != nullptr) {
+    mUiAdaptTimer->start();
+  } else {
+    updateScaleStatus();
+  }
+}
+
+void MainWindow::updateScaleStatus() {
+  if (mScaleStatus == nullptr) {
+    return;
+  }
+  mScaleStatus->setText(
+      QStringLiteral("%1 %2% · %3×%4")
+          .arg(mAutomaticUiScale ? QStringLiteral("自动")
+                                 : QStringLiteral("手动"))
+          .arg(mUiScalePercent)
+          .arg(width())
+          .arg(height()));
+  mScaleStatus->setToolTip(
+      QStringLiteral("视图 > 显示与适配，可切换自动缩放或窗口分辨率"));
+}
+
+void MainWindow::applyWindowResolution(const QSize &requestedSize) {
+  QScreen *activeScreen = screen();
+  if (activeScreen == nullptr) {
+    activeScreen = QGuiApplication::primaryScreen();
+  }
+  if (activeScreen == nullptr) {
+    return;
+  }
+
+  const QRect available = activeScreen->availableGeometry();
+  const QSize fitted = AppTheme::fitWindowResolution(
+      requestedSize, available.size(), minimumSize());
+  showNormal();
+  resize(fitted);
+  move(available.topLeft() +
+       QPoint((available.width() - fitted.width()) / 2,
+              (available.height() - fitted.height()) / 2));
+  scheduleAutomaticUiScale();
+  statusBar()->showMessage(
+      QStringLiteral("窗口已调整为 %1 × %2")
+          .arg(fitted.width())
+          .arg(fitted.height()),
+      3500);
+}
+
+void MainWindow::fitWindowToScreen() {
+  QScreen *activeScreen = screen();
+  if (activeScreen == nullptr) {
+    activeScreen = QGuiApplication::primaryScreen();
+  }
+  if (activeScreen == nullptr) {
+    return;
+  }
+  const QSize available = activeScreen->availableGeometry().size();
+  const QSize automaticSize(qRound(available.width() * 0.92),
+                            qRound(available.height() * 0.90));
+  setAutomaticUiScale(true, true);
+  applyWindowResolution(automaticSize);
 }
 
 void MainWindow::updateEditActions() {
@@ -1240,6 +1421,15 @@ void MainWindow::updateEditActions() {
                            !mProcessSupervisor.isRunning();
   if (mInspectAction == nullptr) {
     return;
+  }
+  if (mRenderToolbar != nullptr) {
+    mRenderToolbar->setVisible(mSceneReady);
+  }
+  if (mSelectionToolbar != nullptr) {
+    mSelectionToolbar->setVisible(mSceneReady);
+  }
+  if (mEditToolbar != nullptr) {
+    mEditToolbar->setVisible(mSceneReady);
   }
   mInspectAction->setEnabled(interactive);
   mRectangleAction->setEnabled(interactive);

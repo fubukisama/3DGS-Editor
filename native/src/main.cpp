@@ -11,8 +11,10 @@
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QIcon>
+#include <QLabel>
 #include <QSurfaceFormat>
 #include <QTimer>
+#include <QToolBar>
 #include <QWidget>
 
 #ifdef _WIN32
@@ -77,8 +79,16 @@ int main(int argc, char *argv[]) {
   }
   application.setWindowIcon(applicationIcon);
 
-  const int scalePercent = gsw::AppTheme::loadScalePercent(QGuiApplication::primaryScreen());
+  const gsw::UiScaleMode scaleMode = gsw::AppTheme::loadScaleMode();
+  const int scalePercent =
+      scaleMode == gsw::UiScaleMode::Automatic
+          ? gsw::AppTheme::recommendedScalePercent(
+                QGuiApplication::primaryScreen())
+          : gsw::AppTheme::loadScalePercent(
+                QGuiApplication::primaryScreen());
   gsw::AppTheme::apply(application, scalePercent, false);
+  application.setProperty("gswAutomaticUiScale",
+                          scaleMode == gsw::UiScaleMode::Automatic);
 
   QCommandLineParser parser;
   parser.setApplicationDescription(QStringLiteral("Gaussian Scene Workbench native desktop application"));
@@ -96,6 +106,10 @@ int main(int argc, char *argv[]) {
       QStringLiteral("smoke-test-import-dialog"),
       QStringLiteral("Verify that adding media from an empty workspace opens the import dialog."));
   parser.addOption(importDialogSmokeTestOption);
+  QCommandLineOption displayLayoutSmokeTestOption(
+      QStringLiteral("smoke-test-display-layout"),
+      QStringLiteral("Verify adaptive display controls and the simplified empty-workspace toolbars."));
+  parser.addOption(displayLayoutSmokeTestOption);
   QCommandLineOption mediaSourceOption(
       QStringLiteral("media-source"),
       QStringLiteral("Pre-populate the media import dialog with a file or directory. "
@@ -110,7 +124,10 @@ int main(int argc, char *argv[]) {
   gsw::MainWindow window;
   QString projectPath = parser.value(projectOption);
   const bool importDialogSmokeTest = parser.isSet(importDialogSmokeTestOption);
-  const bool smokeTest = parser.isSet(smokeTestOption) || importDialogSmokeTest;
+  const bool displayLayoutSmokeTest =
+      parser.isSet(displayLayoutSmokeTestOption);
+  const bool smokeTest = parser.isSet(smokeTestOption) ||
+                         importDialogSmokeTest || displayLayoutSmokeTest;
   if (projectPath.isEmpty() && !parser.positionalArguments().isEmpty()) {
     projectPath = parser.positionalArguments().first();
   }
@@ -119,7 +136,46 @@ int main(int argc, char *argv[]) {
   }
   window.show();
   bool smokeTestCompleted = !smokeTest;
-  if (importDialogSmokeTest) {
+  if (displayLayoutSmokeTest) {
+    QTimer::singleShot(
+        350, &application,
+        [&application, &window, &smokeTestCompleted]() {
+          QAction *autoScale = window.findChild<QAction *>(
+              QStringLiteral("autoUiScaleAction"));
+          QAction *fitWindow = window.findChild<QAction *>(
+              QStringLiteral("fitWindowToScreenAction"));
+          QAction *resolution = window.findChild<QAction *>(
+              QStringLiteral("windowResolution1600x900Action"));
+          QAction *environment = window.findChild<QAction *>(
+              QStringLiteral("environmentAction"));
+          QAction *resetCamera = window.findChild<QAction *>(
+              QStringLiteral("resetCameraAction"));
+          const QToolBar *mainToolbar = window.findChild<QToolBar *>(
+              QStringLiteral("mainToolbar"));
+          const QToolBar *renderToolbar = window.findChild<QToolBar *>(
+              QStringLiteral("renderToolbar"));
+          const QToolBar *selectionToolbar = window.findChild<QToolBar *>(
+              QStringLiteral("selectionToolbar"));
+          const QToolBar *editToolbar = window.findChild<QToolBar *>(
+              QStringLiteral("editToolbar"));
+          const QLabel *scaleStatus = window.findChild<QLabel *>(
+              QStringLiteral("uiScaleStatus"));
+
+          smokeTestCompleted =
+              window.isVisible() && autoScale != nullptr &&
+              fitWindow != nullptr && resolution != nullptr &&
+              mainToolbar != nullptr && renderToolbar != nullptr &&
+              selectionToolbar != nullptr && editToolbar != nullptr &&
+              !renderToolbar->isVisible() &&
+              !selectionToolbar->isVisible() && !editToolbar->isVisible() &&
+              environment != nullptr && resetCamera != nullptr &&
+              !mainToolbar->actions().contains(environment) &&
+              !mainToolbar->actions().contains(resetCamera) &&
+              scaleStatus != nullptr && scaleStatus->text().contains('%') &&
+              scaleStatus->text().contains(QChar(0x00D7));
+          application.exit(smokeTestCompleted ? 0 : 2);
+        });
+  } else if (importDialogSmokeTest) {
     QTimer::singleShot(100, &window, [&window]() {
       QAction *action = window.findChild<QAction *>(
           QStringLiteral("importDatasetAction"));

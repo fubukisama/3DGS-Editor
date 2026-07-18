@@ -5,42 +5,98 @@
 #include <QGuiApplication>
 #include <QScreen>
 #include <QSettings>
+#include <QSize>
 #include <QString>
+#include <QtMath>
 
 #include <algorithm>
 
 namespace gsw {
 
 namespace {
-constexpr int kMinimumScale = 75;
-constexpr int kMaximumScale = 125;
+constexpr int kMinimumScale = 90;
+constexpr int kMaximumScale = 150;
 
 int clampScale(const int value) {
   return std::clamp(value, kMinimumScale, kMaximumScale);
 }
 } // namespace
 
+UiScaleMode AppTheme::loadScaleMode() {
+  const QString mode =
+      QSettings().value(QStringLiteral("ui/scaleMode"),
+                        QStringLiteral("automatic"))
+          .toString();
+  return mode == QStringLiteral("manual") ? UiScaleMode::Manual
+                                           : UiScaleMode::Automatic;
+}
+
 int AppTheme::recommendedScalePercent(const QScreen *screen) {
   if (screen == nullptr) {
-    return 90;
+    return 100;
+  }
+  const QSize availableSize = screen->availableGeometry().size();
+  return recommendedScalePercent(availableSize, availableSize);
+}
+
+int AppTheme::recommendedScalePercent(const QSize &availableSize,
+                                      const QSize &windowSize) {
+  QSize basis = windowSize.isValid() ? windowSize : availableSize;
+  if (availableSize.isValid()) {
+    basis = basis.boundedTo(availableSize);
+  }
+  if (!basis.isValid()) {
+    return 100;
   }
 
-  const int logicalHeight = screen->availableGeometry().height();
-  if (logicalHeight <= 820) {
-    return 80;
-  }
-  if (logicalHeight <= 1080) {
-    return 85;
-  }
-  if (logicalHeight <= 1440) {
+  if (basis.width() <= 1280 || basis.height() <= 720) {
     return 90;
   }
-  return 100;
+  if (basis.width() < 1500 || basis.height() < 820) {
+    return 95;
+  }
+  if (basis.width() < 2200 || basis.height() < 1200) {
+    return 100;
+  }
+  if (basis.width() < 3200 || basis.height() < 1750) {
+    return 110;
+  }
+  return 125;
+}
+
+QSize AppTheme::fitWindowResolution(const QSize &requestedSize,
+                                    const QSize &availableSize,
+                                    const QSize &minimumSize) {
+  if (!availableSize.isValid()) {
+    return requestedSize.expandedTo(minimumSize);
+  }
+
+  const QSize maximumSize(
+      std::max(1, qFloor(availableSize.width() * 0.96)),
+      std::max(1, qFloor(availableSize.height() * 0.96)));
+  QSize fitted = requestedSize.isValid() ? requestedSize : maximumSize;
+  if (fitted.width() > maximumSize.width() ||
+      fitted.height() > maximumSize.height()) {
+    fitted.scale(maximumSize, Qt::KeepAspectRatio);
+  }
+
+  const QSize boundedMinimum = minimumSize.boundedTo(maximumSize);
+  fitted = fitted.expandedTo(boundedMinimum).boundedTo(maximumSize);
+  return fitted;
 }
 
 int AppTheme::loadScalePercent(const QScreen *screen) {
+  Q_UNUSED(screen);
   QSettings settings;
-  return clampScale(settings.value(QStringLiteral("ui/scalePercent"), recommendedScalePercent(screen)).toInt());
+  return clampScale(
+      settings.value(QStringLiteral("ui/manualScalePercent"), 100).toInt());
+}
+
+void AppTheme::saveScaleMode(const UiScaleMode mode) {
+  QSettings().setValue(QStringLiteral("ui/scaleMode"),
+                       mode == UiScaleMode::Manual
+                           ? QStringLiteral("manual")
+                           : QStringLiteral("automatic"));
 }
 
 int AppTheme::scaled(const int value, const int scalePercent) {
@@ -50,7 +106,7 @@ int AppTheme::scaled(const int value, const int scalePercent) {
 void AppTheme::apply(QApplication &application, const int scalePercent, const bool persist) {
   const int scale = clampScale(scalePercent);
   QFont font(QStringLiteral("Microsoft YaHei UI"));
-  font.setPointSizeF(9.0 * scale / 100.0);
+  font.setPointSizeF(10.0 * scale / 100.0);
   font.setStyleStrategy(QFont::PreferAntialias);
   application.setFont(font);
   application.setStyleSheet(styleSheet(scale));
@@ -58,7 +114,7 @@ void AppTheme::apply(QApplication &application, const int scalePercent, const bo
 
   if (persist) {
     QSettings settings;
-    settings.setValue(QStringLiteral("ui/scalePercent"), scale);
+    settings.setValue(QStringLiteral("ui/manualScalePercent"), scale);
   }
 }
 
@@ -179,7 +235,7 @@ QLabel#sectionTitle {
   padding-bottom: @SECTION_BOTTOM@px;
   border-bottom: 1px solid #383c40;
 }
-QLabel#mutedLabel { color: #949ba0; }
+QLabel#mutedLabel, QLabel#uiScaleStatus { color: #949ba0; }
 QLabel#statusGood { color: #66c1a8; }
 QLabel#statusWarn { color: #d9ad5b; }
 QFrame#inspectorPanel { background: #1b1d1f; }

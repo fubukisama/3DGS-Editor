@@ -15,7 +15,7 @@
 - Full-source rectangle/lasso selection plus a persistent 4-256 px continuous brush, with optional visible-point depth filtering, replace/add/subtract, clear, and invert actions.
 - Original-index delete history with undo/redo and atomic cropped PLY export that preserves all vertex fields.
 - Existing PowerShell/Python backend execution through `QProcess`.
-- Qt high-DPI support plus persistent 75%-125% manual UI scaling.
+- Qt high-DPI support with readable 90%-150% manual scaling, automatic screen/window adaptation, common window-resolution presets, and scene-only contextual render/edit toolbars that keep an empty workspace uncluttered.
 
 The current viewport includes a native Gaussian preview, but it is not yet a production SIBR/vksplat-class tile rasterizer. It projects each 3D covariance to a 2D EWA ellipse, sorts preview splats by camera depth after navigation, and composites premultiplied alpha. Higher-order view-dependent SH, GPU tile sorting/culling, and GPU timing remain pending. The displayed metric is CPU submission time and is not labeled as FPS.
 

@@ -5,6 +5,7 @@
 #include "WorkspaceDocument.h"
 
 #include <QMainWindow>
+#include <QSize>
 #include <QStringList>
 
 #include <optional>
@@ -14,9 +15,13 @@ class QActionGroup;
 class QCloseEvent;
 class QDockWidget;
 class QLabel;
+class QMoveEvent;
 class QPlainTextEdit;
+class QResizeEvent;
 class QSpinBox;
 class QTableWidget;
+class QTimer;
+class QToolBar;
 class QTreeWidget;
 
 namespace gsw {
@@ -30,6 +35,8 @@ public:
 
 protected:
   void closeEvent(QCloseEvent *event) override;
+  void moveEvent(QMoveEvent *event) override;
+  void resizeEvent(QResizeEvent *event) override;
 
 private:
   struct PendingDatasetImport {
@@ -61,6 +68,12 @@ private:
   void saveWindowState();
   void resetDockLayout();
   void applyUiScale(int scalePercent, bool persist);
+  void setAutomaticUiScale(bool automatic, bool persist);
+  void refreshAutomaticUiScale();
+  void scheduleAutomaticUiScale();
+  void updateScaleStatus();
+  void applyWindowResolution(const QSize &requestedSize);
+  void fitWindowToScreen();
   void updateActionAvailability();
   void updateEditActions();
 
@@ -103,6 +116,10 @@ private:
   QTreeWidget *mProjectTree = nullptr;
   QTableWidget *mTaskTable = nullptr;
   QPlainTextEdit *mConsole = nullptr;
+  QToolBar *mRenderToolbar = nullptr;
+  QToolBar *mSelectionToolbar = nullptr;
+  QToolBar *mEditToolbar = nullptr;
+  QTimer *mUiAdaptTimer = nullptr;
 
   QLabel *mProjectNameValue = nullptr;
   QLabel *mProjectRootValue = nullptr;
@@ -141,12 +158,13 @@ private:
   QAction *mUndoEditAction = nullptr;
   QAction *mRedoEditAction = nullptr;
   QAction *mExportCropAction = nullptr;
+  QAction *mAutoScaleAction = nullptr;
   QActionGroup *mEditModeActionGroup = nullptr;
   QActionGroup *mRenderModeActionGroup = nullptr;
   QActionGroup *mScaleActionGroup = nullptr;
   QSpinBox *mBrushRadiusSpin = nullptr;
 
-  int mUiScalePercent = 90;
+  int mUiScalePercent = 100;
   int mActiveTaskRow = -1;
   std::optional<PendingDatasetImport> mPendingDatasetImport;
   std::optional<PendingTrainingResult> mPendingTrainingResult;
@@ -165,6 +183,7 @@ private:
   bool mCanRedoEdit = false;
   bool mClosePending = false;
   bool mRecoveryBlocked = false;
+  bool mAutomaticUiScale = true;
   NativeViewport::RenderMode mRenderMode = NativeViewport::RenderMode::Points;
 };
 

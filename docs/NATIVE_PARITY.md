@@ -22,7 +22,7 @@ Status: `available`, `partial`, `missing`, `hidden`.
 | Export | PLY, SPZ, SOG, mesh, texture, GLB | partial | Native cropped PLY export is available for point/Gaussian files and rejects indexed meshes; SPZ, SOG, mesh, texture, and GLB remain missing. |
 | Tasks | Logs, cancel, retry, open output | partial | One supervised import, training, or COLMAP process streams logs, parses structured stage/progress events, and supports process-tree cancellation. Typed queue persistence, retry, and open-output actions remain missing. |
 | Renderer metrics | Point/splat frame and GPU timing | partial | Point and Gaussian modes report CPU submission time without presenting it as FPS. GPU timer queries and SIBR-equivalent renderer metrics remain missing. |
-| UI scaling | DPI-aware automatic/manual scale | available | 75%-125% settings persist and desktop QA covers 1366x768, 1920x1080, and high-DPI displays. |
+| UI scaling | DPI-aware automatic/manual scale | available | Automatic mode adapts fonts, controls, icons, and viewport overlays to the active screen/window; 90%-150% manual settings persist, common window-resolution presets are bounded to the available desktop, empty workspaces hide scene-only toolbars, and desktop QA covers compact, 1920x1080, and high-DPI layouts. |
 
 ## Priority order
 
