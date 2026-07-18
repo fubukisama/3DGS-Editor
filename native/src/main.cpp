@@ -17,7 +17,10 @@
 #include <QSurfaceFormat>
 #include <QTimer>
 #include <QToolBar>
+#include <QToolButton>
 #include <QWidget>
+
+#include <algorithm>
 
 #ifdef _WIN32
 #include <shobjidl.h>
@@ -160,6 +163,8 @@ int main(int argc, char *argv[]) {
               QStringLiteral("selectionToolbar"));
           const QToolBar *editToolbar = window.findChild<QToolBar *>(
               QStringLiteral("editToolbar"));
+          const QDockWidget *projectDock = window.findChild<QDockWidget *>(
+              QStringLiteral("projectDock"));
           const QDockWidget *inspectorDock = window.findChild<QDockWidget *>(
               QStringLiteral("inspectorDock"));
           const QDockWidget *taskDock = window.findChild<QDockWidget *>(
@@ -167,6 +172,53 @@ int main(int argc, char *argv[]) {
           const QLabel *scaleStatus = window.findChild<QLabel *>(
               QStringLiteral("uiScaleStatus"));
           const int fontHeight = QFontMetrics(window.font()).height();
+          const int uiScalePercent =
+              application.property("gswUiScalePercent").toInt();
+          const auto hasCompactDockTitle =
+              [uiScalePercent](const QDockWidget *dock) {
+                if (dock == nullptr || dock->titleBarWidget() == nullptr) {
+                  return false;
+                }
+                const QWidget *titleBar = dock->titleBarWidget();
+                const QLabel *titleLabel = titleBar->findChild<QLabel *>(
+                    QStringLiteral("dockTitleLabel"));
+                const QList<QToolButton *> buttons =
+                    titleBar->findChildren<QToolButton *>(
+                        QStringLiteral("dockTitleButton"));
+                if (titleBar->objectName() != QStringLiteral("dockTitleBar") ||
+                    titleLabel == nullptr || buttons.size() != 2 ||
+                    titleLabel->text() != dock->windowTitle() ||
+                    titleLabel->font().pixelSize() !=
+                        gsw::AppTheme::dockTitleFontPixelSize(
+                            uiScalePercent)) {
+                  return false;
+                }
+
+                const int paddingY =
+                    gsw::AppTheme::scaled(1, uiScalePercent);
+                const int buttonSize =
+                    gsw::AppTheme::dockTitleButtonSize(uiScalePercent);
+                const int contentHeight = (std::max)(
+                    QFontMetrics(titleLabel->font()).height(), buttonSize);
+                const int expectedHeight = (std::max)(
+                    gsw::AppTheme::dockTitleHeight(uiScalePercent),
+                    contentHeight + paddingY * 2);
+                if (titleBar->height() != expectedHeight ||
+                    titleBar->height() >
+                        gsw::AppTheme::dockTitleHeight(uiScalePercent) +
+                            gsw::AppTheme::scaled(2, uiScalePercent) ||
+                    !titleBar->rect().contains(titleLabel->geometry())) {
+                  return false;
+                }
+                for (const QToolButton *button : buttons) {
+                  if (button->size() != QSize(buttonSize, buttonSize) ||
+                      button->accessibleName().isEmpty() ||
+                      !titleBar->rect().contains(button->geometry())) {
+                    return false;
+                  }
+                }
+                return true;
+              };
 
           smokeTestCompleted =
               window.isVisible() && autoScale != nullptr &&
@@ -178,7 +230,10 @@ int main(int argc, char *argv[]) {
               environment != nullptr && resetCamera != nullptr &&
               !mainToolbar->actions().contains(environment) &&
               !mainToolbar->actions().contains(resetCamera) &&
-              inspectorDock != nullptr && taskDock != nullptr &&
+              projectDock != nullptr && inspectorDock != nullptr &&
+              taskDock != nullptr && hasCompactDockTitle(projectDock) &&
+              hasCompactDockTitle(inspectorDock) &&
+              hasCompactDockTitle(taskDock) &&
               inspectorDock->minimumWidth() >= fontHeight * 12 &&
               taskDock->minimumHeight() >= fontHeight * 7 &&
               scaleStatus != nullptr && scaleStatus->text().contains('%') &&

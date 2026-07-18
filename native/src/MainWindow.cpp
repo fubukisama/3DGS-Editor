@@ -29,6 +29,7 @@
 #include <QGuiApplication>
 #include <QHash>
 #include <QHeaderView>
+#include <QHBoxLayout>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -36,6 +37,7 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QMouseEvent>
 #include <QMoveEvent>
 #include <QPlainTextEdit>
 #include <QProcess>
@@ -55,6 +57,7 @@
 #include <QTextCursor>
 #include <QTimer>
 #include <QToolBar>
+#include <QToolButton>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
 #include <QTemporaryFile>
@@ -67,6 +70,132 @@ namespace gsw {
 
 namespace {
 constexpr int kDockLayoutStateVersion = 4;
+
+class DockTitleBar final : public QWidget {
+public:
+  explicit DockTitleBar(QDockWidget *dock)
+      : QWidget(dock), mDock(dock) {
+    setObjectName(QStringLiteral("dockTitleBar"));
+    setAccessibleName(dock->windowTitle());
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+
+    mLayout = new QHBoxLayout(this);
+    mTitleLabel = new QLabel(dock->windowTitle(), this);
+    mTitleLabel->setObjectName(QStringLiteral("dockTitleLabel"));
+    mTitleLabel->setTextFormat(Qt::PlainText);
+    mTitleLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    mTitleLabel->setSizePolicy(QSizePolicy::Expanding,
+                               QSizePolicy::Preferred);
+    mTitleLabel->setAttribute(Qt::WA_TransparentForMouseEvents);
+    mLayout->addWidget(mTitleLabel, 1);
+
+    mFloatButton = createButton(QStringLiteral("dockTitleButton"));
+    mCloseButton = createButton(QStringLiteral("dockTitleButton"));
+    mLayout->addWidget(mFloatButton);
+    mLayout->addWidget(mCloseButton);
+
+    connect(dock, &QDockWidget::windowTitleChanged, this,
+            [this](const QString &title) {
+              setAccessibleName(title);
+              mTitleLabel->setText(title);
+            });
+    connect(dock, &QDockWidget::featuresChanged, this,
+            [this]() { updateActions(); });
+    connect(dock, &QDockWidget::topLevelChanged, this,
+            [this]() { updateActions(); });
+    connect(mFloatButton, &QToolButton::clicked, this, [this]() {
+      if (mDock->features().testFlag(QDockWidget::DockWidgetFloatable)) {
+        mDock->setFloating(!mDock->isFloating());
+      }
+    });
+    connect(mCloseButton, &QToolButton::clicked, mDock, &QWidget::close);
+    updateActions();
+  }
+
+  void applyScale(const int scalePercent) {
+    QFont titleFont = qApp->font();
+    titleFont.setPixelSize(AppTheme::dockTitleFontPixelSize(scalePercent));
+    titleFont.setWeight(QFont::Normal);
+    mTitleLabel->setFont(titleFont);
+
+    const int paddingX = AppTheme::scaled(6, scalePercent);
+    const int paddingY = AppTheme::scaled(1, scalePercent);
+    const int spacing = AppTheme::scaled(2, scalePercent);
+    const int buttonSize = AppTheme::dockTitleButtonSize(scalePercent);
+    const int iconSize = AppTheme::scaled(10, scalePercent);
+    mLayout->setContentsMargins(paddingX, paddingY, paddingX, paddingY);
+    mLayout->setSpacing(spacing);
+    for (QToolButton *button : {mFloatButton, mCloseButton}) {
+      button->setFixedSize(buttonSize, buttonSize);
+      button->setIconSize(QSize(iconSize, iconSize));
+    }
+
+    const int contentHeight =
+        std::max(QFontMetrics(titleFont).height(), buttonSize);
+    setFixedHeight(std::max(AppTheme::dockTitleHeight(scalePercent),
+                            contentHeight + paddingY * 2));
+    updateActions();
+    updateGeometry();
+  }
+
+protected:
+  void mousePressEvent(QMouseEvent *event) override { event->ignore(); }
+  void mouseMoveEvent(QMouseEvent *event) override { event->ignore(); }
+  void mouseReleaseEvent(QMouseEvent *event) override { event->ignore(); }
+  void mouseDoubleClickEvent(QMouseEvent *event) override { event->ignore(); }
+
+private:
+  QToolButton *createButton(const QString &objectName) {
+    auto *button = new QToolButton(this);
+    button->setObjectName(objectName);
+    button->setAutoRaise(true);
+    button->setFocusPolicy(Qt::TabFocus);
+    return button;
+  }
+
+  void updateActions() {
+    const QDockWidget::DockWidgetFeatures features = mDock->features();
+    const bool canFloat =
+        features.testFlag(QDockWidget::DockWidgetFloatable);
+    const bool canClose = features.testFlag(QDockWidget::DockWidgetClosable);
+    const QString floatText =
+        mDock->isFloating() ? QStringLiteral("停靠面板")
+                            : QStringLiteral("浮动面板");
+    mFloatButton->setVisible(canFloat);
+    mFloatButton->setEnabled(canFloat);
+    mFloatButton->setToolTip(floatText);
+    mFloatButton->setAccessibleName(floatText);
+    mFloatButton->setIcon(
+        mDock->style()->standardIcon(QStyle::SP_TitleBarNormalButton));
+
+    mCloseButton->setVisible(canClose);
+    mCloseButton->setEnabled(canClose);
+    mCloseButton->setToolTip(QStringLiteral("关闭面板"));
+    mCloseButton->setAccessibleName(QStringLiteral("关闭面板"));
+    mCloseButton->setIcon(
+        mDock->style()->standardIcon(QStyle::SP_TitleBarCloseButton));
+  }
+
+  QDockWidget *mDock = nullptr;
+  QHBoxLayout *mLayout = nullptr;
+  QLabel *mTitleLabel = nullptr;
+  QToolButton *mFloatButton = nullptr;
+  QToolButton *mCloseButton = nullptr;
+};
+
+void installDockTitleBar(QDockWidget *dock, const int scalePercent) {
+  auto *titleBar = new DockTitleBar(dock);
+  dock->setTitleBarWidget(titleBar);
+  titleBar->applyScale(scalePercent);
+}
+
+void updateDockTitleBarScale(QDockWidget *dock, const int scalePercent) {
+  if (dock == nullptr || dock->titleBarWidget() == nullptr ||
+      dock->titleBarWidget()->objectName() != QStringLiteral("dockTitleBar")) {
+    return;
+  }
+  static_cast<DockTitleBar *>(dock->titleBarWidget())->applyScale(scalePercent);
+}
 
 QLabel *createValueLabel(QWidget *parent = nullptr) {
   auto *label = new QLabel(QStringLiteral("-"), parent);
@@ -828,6 +957,7 @@ void MainWindow::createProjectDock() {
   mProjectDock = new QDockWidget(QStringLiteral("工程"), this);
   mProjectDock->setObjectName(QStringLiteral("projectDock"));
   mProjectDock->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
+  installDockTitleBar(mProjectDock, mUiScalePercent);
   mProjectTree = new QTreeWidget(mProjectDock);
   mProjectTree->setHeaderHidden(true);
   mProjectTree->setAlternatingRowColors(false);
@@ -852,6 +982,7 @@ void MainWindow::createInspectorDock() {
   mInspectorDock = new QDockWidget(QStringLiteral("属性"), this);
   mInspectorDock->setObjectName(QStringLiteral("inspectorDock"));
   mInspectorDock->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
+  installDockTitleBar(mInspectorDock, mUiScalePercent);
 
   auto *scrollArea = new QScrollArea(mInspectorDock);
   scrollArea->setWidgetResizable(true);
@@ -912,6 +1043,7 @@ void MainWindow::createTaskDock() {
   mTaskDock = new QDockWidget(QStringLiteral("任务与日志"), this);
   mTaskDock->setObjectName(QStringLiteral("taskDock"));
   mTaskDock->setAllowedAreas(Qt::BottomDockWidgetArea | Qt::TopDockWidgetArea);
+  installDockTitleBar(mTaskDock, mUiScalePercent);
 
   auto *tabs = new QTabWidget(mTaskDock);
   mTaskTable = new QTableWidget(0, 4, tabs);
@@ -1308,6 +1440,9 @@ void MainWindow::rebalanceDockSizes() {
 }
 
 void MainWindow::updateDockMetrics() {
+  updateDockTitleBarScale(mProjectDock, mUiScalePercent);
+  updateDockTitleBarScale(mInspectorDock, mUiScalePercent);
+  updateDockTitleBarScale(mTaskDock, mUiScalePercent);
   const int fontHeight = QFontMetrics(qApp->font()).height();
   if (mProjectDock != nullptr) {
     mProjectDock->setMinimumWidth(

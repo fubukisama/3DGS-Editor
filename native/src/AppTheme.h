@@ -28,6 +28,9 @@ public:
                                    const QSize &minimumSize);
   static int rescaledDockExtent(int currentExtent, int fromScalePercent,
                                 int toScalePercent, int minimumExtent);
+  static int dockTitleFontPixelSize(int scalePercent);
+  static int dockTitleHeight(int scalePercent);
+  static int dockTitleButtonSize(int scalePercent);
   static void saveScaleMode(UiScaleMode mode);
   static void apply(QApplication &application, int scalePercent, bool persist);
   static int scaled(int value, int scalePercent);

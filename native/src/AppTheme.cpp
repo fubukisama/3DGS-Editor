@@ -111,6 +111,18 @@ int AppTheme::rescaledDockExtent(const int currentExtent,
   return std::max(target, minimumExtent);
 }
 
+int AppTheme::dockTitleFontPixelSize(const int scalePercent) {
+  return scaled(13, scalePercent);
+}
+
+int AppTheme::dockTitleHeight(const int scalePercent) {
+  return scaled(20, scalePercent);
+}
+
+int AppTheme::dockTitleButtonSize(const int scalePercent) {
+  return scaled(14, scalePercent);
+}
+
 int AppTheme::loadScalePercent(const QScreen *screen) {
   Q_UNUSED(screen);
   QSettings settings;
@@ -227,10 +239,30 @@ QDockWidget { color: #dfe2e4; }
 QDockWidget::title {
   background: #222528;
   border-bottom: 1px solid #363a3e;
-  padding: @DOCK_PAD@px;
-  font-weight: 500;
+  padding: @DOCK_FALLBACK_V@px @DOCK_FALLBACK_H@px;
+  font-size: @DOCK_FALLBACK_FONT@px;
+  font-weight: 400;
   text-align: left;
 }
+QWidget#dockTitleBar {
+  background: #222528;
+  border: 0;
+  border-bottom: 1px solid #363a3e;
+}
+QLabel#dockTitleLabel {
+  background: transparent;
+  color: #dfe2e4;
+  border: 0;
+  padding: 0;
+}
+QToolButton#dockTitleButton {
+  background: transparent;
+  border: 0;
+  border-radius: 2px;
+  padding: 0;
+}
+QToolButton#dockTitleButton:hover { background: #34383c; }
+QToolButton#dockTitleButton:pressed { background: #315d58; }
 QTabWidget::pane { border: 0; border-top: 1px solid #373b3f; }
 QTabBar::tab {
   background: #202326;
@@ -287,7 +319,9 @@ QToolTip { background: #2c3033; color: #ffffff; border: 1px solid #555b60; paddi
   replace(QStringLiteral("@COMBO_ARROW@"), 22);
   replace(QStringLiteral("@ROW_HEIGHT@"), 25);
   replace(QStringLiteral("@HEADER_PAD@"), 6);
-  replace(QStringLiteral("@DOCK_PAD@"), 4);
+  replace(QStringLiteral("@DOCK_FALLBACK_V@"), 1);
+  replace(QStringLiteral("@DOCK_FALLBACK_H@"), 6);
+  replace(QStringLiteral("@DOCK_FALLBACK_FONT@"), 13);
   replace(QStringLiteral("@TAB_V@"), 5);
   replace(QStringLiteral("@TAB_H@"), 12);
   replace(QStringLiteral("@SCROLL@"), 10);

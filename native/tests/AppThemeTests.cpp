@@ -13,6 +13,7 @@ private slots:
   void compensatesForOperatingSystemDisplayScale();
   void growsAutomaticScaleForHighResolutionWorkspaces();
   void fitsRequestedWindowResolutionInsideTheScreen();
+  void keepsDockTitlesCompactAcrossScales();
   void rescalesDockExtentWhenDensityChanges();
   void clampsManualScaleToSupportedRange();
 };
@@ -50,6 +51,20 @@ void AppThemeTests::fitsRequestedWindowResolutionInsideTheScreen() {
   QVERIFY(fitted.height() <= 699);
   QVERIFY(fitted.width() >= 940);
   QVERIFY(fitted.height() >= 620);
+}
+
+void AppThemeTests::keepsDockTitlesCompactAcrossScales() {
+  QCOMPARE(AppTheme::dockTitleFontPixelSize(90), 12);
+  QCOMPARE(AppTheme::dockTitleHeight(90), 18);
+  QCOMPARE(AppTheme::dockTitleButtonSize(90), 13);
+
+  QCOMPARE(AppTheme::dockTitleFontPixelSize(100), 13);
+  QCOMPARE(AppTheme::dockTitleHeight(100), 20);
+  QCOMPARE(AppTheme::dockTitleButtonSize(100), 14);
+
+  QCOMPARE(AppTheme::dockTitleFontPixelSize(150), 20);
+  QCOMPARE(AppTheme::dockTitleHeight(150), 30);
+  QCOMPARE(AppTheme::dockTitleButtonSize(150), 21);
 }
 
 void AppThemeTests::rescalesDockExtentWhenDensityChanges() {
