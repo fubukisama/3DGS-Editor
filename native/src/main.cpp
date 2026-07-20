@@ -24,6 +24,7 @@
 #include <QTimer>
 #include <QToolBar>
 #include <QToolButton>
+#include <QWheelEvent>
 #include <QWidget>
 
 #include <algorithm>
@@ -190,6 +191,10 @@ int main(int argc, char *argv[]) {
           QCoreApplication::sendEvent(viewport, &press);
           QCoreApplication::sendEvent(viewport, &move);
           QCoreApplication::sendEvent(viewport, &release);
+          QWheelEvent zoomOut(
+              start, globalStart, QPoint(), QPoint(0, -24 * 120),
+              Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+          QCoreApplication::sendEvent(viewport, &zoomOut);
         });
     QTimer::singleShot(
         950, &application,
@@ -198,9 +203,11 @@ int main(int argc, char *argv[]) {
           auto *viewport =
               qobject_cast<gsw::NativeViewport *>(window.centralWidget());
           int visibleGridPixels = 0;
+          int distantGridPixels = 0;
           bool gridRenderingAvailable = false;
           bool gridOriginFixed = false;
           QRect sampleRect;
+          QRect distantSampleRect;
           QImage frame;
           if (viewport != nullptr) {
             frame = viewport->grabFramebuffer();
@@ -218,6 +225,25 @@ int main(int argc, char *argv[]) {
                 }
               }
             }
+            distantSampleRect = QRect(
+                qRound(frame.width() * 0.46),
+                qRound(frame.height() * 0.20),
+                qRound(frame.width() * 0.10),
+                qRound(frame.height() * 0.18));
+            for (int y = distantSampleRect.top();
+                 y <= distantSampleRect.bottom(); ++y) {
+              for (int x = distantSampleRect.left();
+                   x <= distantSampleRect.right(); ++x) {
+                const QColor pixel = frame.pixelColor(x, y);
+                const int brightest =
+                    (std::max)({pixel.red(), pixel.green(), pixel.blue()});
+                const int darkest =
+                    (std::min)({pixel.red(), pixel.green(), pixel.blue()});
+                if (brightest > 22 && brightest - darkest <= 12) {
+                  ++distantGridPixels;
+                }
+              }
+            }
             gridRenderingAvailable =
                 viewport->infiniteGridRenderingAvailable();
             gridOriginFixed =
@@ -225,7 +251,8 @@ int main(int argc, char *argv[]) {
                 QVector3D(0.0F, 0.0F, 0.0F);
             smokeTestCompleted =
                 gridRenderingAvailable && gridOriginFixed &&
-                visibleGridPixels > sampleRect.width();
+                visibleGridPixels > sampleRect.width() &&
+                distantGridPixels > distantSampleRect.width() / 2;
           }
           int exitCode = 0;
           if (viewport == nullptr) {
@@ -236,6 +263,8 @@ int main(int argc, char *argv[]) {
             exitCode = 4;
           } else if (visibleGridPixels <= sampleRect.width()) {
             exitCode = 5;
+          } else if (distantGridPixels <= distantSampleRect.width() / 2) {
+            exitCode = 6;
           }
           if (!frame.isNull()) {
             frame.save(QDir::temp().filePath(
@@ -244,7 +273,9 @@ int main(int argc, char *argv[]) {
           qInfo() << "Infinite-grid smoke:" << "viewport" << (viewport != nullptr)
                   << "shader" << gridRenderingAvailable << "fixed-origin"
                   << gridOriginFixed << "visible-pixels" << visibleGridPixels
-                  << "required" << sampleRect.width();
+                  << "required" << sampleRect.width()
+                  << "distant-pixels" << distantGridPixels
+                  << "distant-required" << distantSampleRect.width() / 2;
           smokeTestFailureCode = exitCode;
           application.exit(exitCode);
         });

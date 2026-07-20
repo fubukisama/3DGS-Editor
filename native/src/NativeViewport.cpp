@@ -25,6 +25,8 @@ namespace gsw {
 
 namespace {
 constexpr float kPi = 3.14159265358979323846F;
+constexpr float kReferenceGridMinimumVisibleDistance = 10000.0F;
+constexpr float kReferenceGridDistanceMultiplier = 256.0F;
 
 float radians(const float degrees) { return degrees * kPi / 180.0F; }
 
@@ -480,10 +482,9 @@ in vec2 clipCoordinate;
 out vec4 fragmentColor;
 
 uniform mat4 inverseViewProjection;
-uniform mat4 viewProjection;
 uniform vec3 cameraWorld;
 uniform float cameraDistance;
-uniform float farDistance;
+uniform float gridVisibleDistance;
 uniform float uiScale;
 
 vec3 unprojectPoint(float clipDepth) {
@@ -525,9 +526,12 @@ void main() {
   }
 
   float rayParameter = -nearPoint.y / ray.y;
-  if (rayParameter <= 0.0 || rayParameter >= 1.0) {
+  if (rayParameter <= 0.0) {
     discard;
   }
+  // nearPoint/farPoint define a ray, not the grid's extent. Extrapolating
+  // beyond the scene far plane keeps the background grid independent from
+  // the much tighter depth range used by points and Gaussian splats.
   vec3 world = nearPoint + rayParameter * ray;
 
   // The scale is uniform for the whole frame. Keeping it out of derivative
@@ -566,21 +570,13 @@ void main() {
   float distanceToCamera = length(toCamera);
   float planeFacing = abs(toCamera.y) / max(distanceToCamera, 1e-6);
   float horizonFade = 1.0 - pow(1.0 - clamp(planeFacing, 0.0, 1.0), 4.0);
-  float distanceFade = 1.0 - smoothstep(farDistance * 0.55,
-                                        farDistance * 0.92,
+  float distanceFade = 1.0 - smoothstep(gridVisibleDistance * 0.5,
+                                        gridVisibleDistance,
                                         distanceToCamera);
-  float clipFade = 1.0 - smoothstep(0.78, 0.995, rayParameter);
-  float alpha = lineAlpha * horizonFade * distanceFade * clipFade;
+  float alpha = lineAlpha * horizonFade * distanceFade;
   if (alpha < 0.003) {
     discard;
   }
-
-  vec4 planeClip = viewProjection * vec4(world, 1.0);
-  float depth = planeClip.z / planeClip.w * 0.5 + 0.5;
-  if (depth < 0.0 || depth > 1.0) {
-    discard;
-  }
-  gl_FragDepth = depth;
   fragmentColor = vec4(color, alpha);
 }
 )GLSL");
@@ -1002,11 +998,12 @@ void NativeViewport::drawInfiniteGrid(const QMatrix4x4 &viewProjection) {
   mGridProgram->bind();
   mGridProgram->setUniformValue("inverseViewProjection",
                                 inverseViewProjection);
-  mGridProgram->setUniformValue("viewProjection", viewProjection);
   mGridProgram->setUniformValue("cameraWorld", cameraPosition());
   mGridProgram->setUniformValue("cameraDistance", mDistance);
   mGridProgram->setUniformValue(
-      "farDistance", std::max(100.0F, mDistance + mSceneRadius * 12.0F));
+      "gridVisibleDistance",
+      std::max(kReferenceGridMinimumVisibleDistance,
+               mDistance * kReferenceGridDistanceMultiplier));
   mGridProgram->setUniformValue("uiScale",
                                 static_cast<float>(devicePixelRatioF()));
   {
