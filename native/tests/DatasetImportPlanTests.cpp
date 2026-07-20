@@ -1,10 +1,14 @@
 #include "DatasetImportPlan.h"
 #include "MediaProjectBootstrap.h"
+#include "UntitledWorkspaceStorage.h"
 
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QStorageInfo>
 #include <QTemporaryDir>
 #include <QtTest>
 
@@ -28,6 +32,7 @@ private slots:
   void rejectsRequestsWithoutSupportedMedia();
   void rejectsUnsafeWindowsSceneNames_data();
   void rejectsUnsafeWindowsSceneNames();
+  void fallsBackToSystemTempWhenNoDataDriveIsAvailable();
   void suggestsSceneNamesFromFoldersAndVideos();
   void usesMeaningfulParentForGenericImageFolders();
 };
@@ -261,6 +266,30 @@ void DatasetImportPlanTests::rejectsUnsafeWindowsSceneNames() {
   QString error;
   QVERIFY(!DatasetImportPlan::create(request, &error).has_value());
   QVERIFY(!error.isEmpty());
+}
+
+void DatasetImportPlanTests::fallsBackToSystemTempWhenNoDataDriveIsAvailable() {
+  QTemporaryDir temporary;
+  QVERIFY(temporary.isValid());
+
+  const QStorageInfo storage(temporary.path());
+  QVERIFY(storage.isValid());
+  QVERIFY(storage.isReady());
+
+  UntitledWorkspaceSearchOptions options;
+  options.systemRoot = storage.rootPath();
+  options.preferredRoots = {temporary.path()};
+  options.mountedRoots = {storage.rootPath()};
+  options.fallbackRoot =
+      QDir(temporary.path()).filePath(QStringLiteral("system-temp-fallback"));
+
+  QString error;
+  const QString selected = findUntitledWorkspaceBase(options, &error);
+  QCOMPARE(selected,
+           QDir::cleanPath(QFileInfo(options.fallbackRoot).absoluteFilePath()));
+  QVERIFY2(error.isEmpty(), qPrintable(error));
+  QVERIFY(QFileInfo(selected).isDir());
+  QVERIFY(QFileInfo(selected).isWritable());
 }
 
 void DatasetImportPlanTests::suggestsSceneNamesFromFoldersAndVideos() {

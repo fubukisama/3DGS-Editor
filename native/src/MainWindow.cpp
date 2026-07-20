@@ -11,6 +11,7 @@
 #include "TrainingDialog.h"
 #include "TrainingEnvironmentProbe.h"
 #include "TrainingOutputLocator.h"
+#include "UntitledWorkspaceStorage.h"
 
 #include <QAction>
 #include <QActionGroup>
@@ -390,92 +391,6 @@ bool hasImportRecoveryArtifacts(const QString &datasetRoot) {
   return std::any_of(entries.cbegin(), entries.cend(), [](const QFileInfo &entry) {
     return artifactPattern.match(entry.fileName()).hasMatch();
   });
-}
-
-QString existingAncestor(QString path) {
-  path = QFileInfo(path).absoluteFilePath();
-  QFileInfo info(path);
-  while (!info.exists()) {
-    const QString parent = info.absolutePath();
-    if (parent == path) {
-      return {};
-    }
-    path = parent;
-    info.setFile(path);
-  }
-  return info.isDir() ? info.absoluteFilePath() : info.absolutePath();
-}
-
-QString untitledWorkspaceBase(QString *errorMessage) {
-  const QString systemRoot = comparablePath(QStorageInfo::root().rootPath());
-  QSet<QString> checkedRoots;
-
-  const auto tryCandidate = [&](const QString &candidate,
-                                const bool explicitLocation) -> QString {
-    if (candidate.trimmed().isEmpty()) {
-      return {};
-    }
-    const QString ancestor = existingAncestor(candidate);
-    if (ancestor.isEmpty()) {
-      return {};
-    }
-    const QStorageInfo storage(ancestor);
-    if (!storage.isValid() || !storage.isReady() || storage.isReadOnly()) {
-      return {};
-    }
-    const QString volumeRoot = comparablePath(storage.rootPath());
-    if (!explicitLocation &&
-        volumeRoot.compare(systemRoot, localPathCaseSensitivity()) == 0) {
-      return {};
-    }
-    const QString rootKey =
-        explicitLocation ? comparablePath(candidate) : volumeRoot;
-    if (checkedRoots.contains(rootKey.toCaseFolded())) {
-      return {};
-    }
-    checkedRoots.insert(rootKey.toCaseFolded());
-
-    const QString base = explicitLocation
-                             ? QFileInfo(candidate).absoluteFilePath()
-                             : QDir(storage.rootPath())
-                                   .filePath(QStringLiteral(
-                                       ".Gaussian-Scene-Workbench/temporary"));
-    if (!QDir().mkpath(base) || !QFileInfo(base).isDir() ||
-        !QFileInfo(base).isWritable()) {
-      return {};
-    }
-    return QDir::cleanPath(QFileInfo(base).absoluteFilePath());
-  };
-
-  const QString configured =
-      qEnvironmentVariable("GSW_UNTITLED_ROOT").trimmed();
-  if (!configured.isEmpty()) {
-    const QString selected = tryCandidate(configured, true);
-    if (!selected.isEmpty()) {
-      return selected;
-    }
-  }
-
-  for (const QString &candidate :
-       {QCoreApplication::applicationDirPath(), QDir::currentPath()}) {
-    const QString selected = tryCandidate(candidate, false);
-    if (!selected.isEmpty()) {
-      return selected;
-    }
-  }
-  for (const QStorageInfo &storage : QStorageInfo::mountedVolumes()) {
-    const QString selected = tryCandidate(storage.rootPath(), false);
-    if (!selected.isEmpty()) {
-      return selected;
-    }
-  }
-
-  if (errorMessage != nullptr) {
-    *errorMessage = QStringLiteral(
-        "找不到可写的非系统盘临时工作区。请连接或准备 D:/E: 等数据盘，"
-        "也可通过 GSW_UNTITLED_ROOT 指定临时工作区。");
-  }
-  return {};
 }
 
 QString backendUnavailableMessage(const QString &repositoryRoot,
@@ -1896,7 +1811,7 @@ bool MainWindow::confirmDiscardSceneEdits() {
 
 bool MainWindow::beginUntitledProject(const QString &displayName,
                                       QString *errorMessage) {
-  const QString base = untitledWorkspaceBase(errorMessage);
+  const QString base = defaultUntitledWorkspaceBase(errorMessage);
   if (base.isEmpty()) {
     return false;
   }

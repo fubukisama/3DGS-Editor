@@ -71,6 +71,8 @@ qt_add_executable(GaussianSceneWorkbench WIN32
   src/TrainingEnvironmentProbe.h
   src/TrainingOutputLocator.cpp
   src/TrainingOutputLocator.h
+  src/UntitledWorkspaceStorage.cpp
+  src/UntitledWorkspaceStorage.h
   src/WorkspaceDocument.cpp
   src/WorkspaceDocument.h
   src/main.cpp
@@ -171,6 +173,8 @@ if(BUILD_TESTING)
       src/DatasetImportPlan.h
       src/MediaProjectBootstrap.cpp
       src/MediaProjectBootstrap.h
+      src/UntitledWorkspaceStorage.cpp
+      src/UntitledWorkspaceStorage.h
     )
     target_include_directories(gsw_dataset_import_plan_tests PRIVATE src)
     target_link_libraries(gsw_dataset_import_plan_tests PRIVATE Qt6::Core Qt6::Test)
