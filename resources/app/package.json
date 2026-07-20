@@ -1,16 +1,20 @@
 {
   "name": "gaussian-scene-workbench-desktop",
-  "version": "0.2.12",
+  "version": "0.2.13",
   "description": "Legacy HTML desktop research workbench for Gaussian scene reconstruction, analysis, and editing",
   "main": "main.js",
   "private": true,
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "start": "electron .",
+    "test": "node --test tests/*.test.js",
     "package:win": "electron-packager . \"Gaussian Scene Workbench\" --platform=win32 --arch=x64 --overwrite --out=dist",
     "release:win": "powershell -ExecutionPolicy Bypass -File ..\\..\\scripts\\package_editor_release.ps1"
   },
   "devDependencies": {
-    "@electron/packager": "^18.4.4",
-    "electron": "^36.4.0"
+    "@electron/packager": "20.0.3",
+    "electron": "43.1.1"
   }
 }

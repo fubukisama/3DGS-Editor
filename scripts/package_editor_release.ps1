@@ -14,6 +14,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $DesktopApp "package.json"))) {
 }
 $PackageDir = Join-Path $DesktopApp "dist\Gaussian Scene Workbench-win32-x64"
 $ReleaseRoot = Join-Path $Root "release"
+$BuildRoot = Join-Path $Root "build"
 
 if ([string]::IsNullOrWhiteSpace($Version)) {
   $PackageJson = Get-Content (Join-Path $DesktopApp "package.json") -Raw | ConvertFrom-Json
@@ -57,12 +58,46 @@ function Get-Sha256Hex($Path) {
 }
 
 if (-not $SkipElectronPackage) {
-  Push-Location $DesktopApp
+  $nodeVersionText = (& node --version 2>$null)
+  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($nodeVersionText)) {
+    throw "Node.js 22.12 or newer is required to package the desktop app."
+  }
+  $nodeVersion = [version]($nodeVersionText.TrimStart("v"))
+  if ($nodeVersion -lt [version]"22.12.0") {
+    throw "Node.js 22.12 or newer is required to package the desktop app; found $nodeVersionText."
+  }
+
+  New-Item -ItemType Directory -Force -Path $BuildRoot | Out-Null
+  $buildRootResolved = (Resolve-Path -LiteralPath $BuildRoot).Path
+  $stagingRoot = Join-Path $buildRootResolved ("desktop-package-{0}-{1}" -f $PID, [guid]::NewGuid().ToString("N"))
+  $stagingApp = Join-Path $stagingRoot "app"
+  $stagingDist = Join-Path $stagingApp "dist\Gaussian Scene Workbench-win32-x64"
+  $npmCache = Join-Path $buildRootResolved "npm-cache"
+  $electronCache = Join-Path $buildRootResolved "electron-cache"
+
+  Write-Host "Building Electron in isolated staging directory: $stagingRoot"
+  Copy-TreeFiltered $DesktopApp $stagingApp @("node_modules", "dist", "npm-start-smoke.err.log", "npm-start-smoke.out.log")
+  New-Item -ItemType Directory -Force -Path $npmCache | Out-Null
+  New-Item -ItemType Directory -Force -Path $electronCache | Out-Null
+
+  $previousElectronCache = $env:ELECTRON_CACHE
+  $env:ELECTRON_CACHE = $electronCache
+  Push-Location $stagingApp
   try {
-    npm install
+    npm ci --no-audit --no-fund --cache $npmCache
     npm run package:win
+    if (-not (Test-Path -LiteralPath (Join-Path $stagingDist "Gaussian Scene Workbench.exe"))) {
+      throw "Isolated Electron package was not created: $stagingDist"
+    }
+    Copy-TreeFiltered $stagingDist $PackageDir
   } finally {
     Pop-Location
+    $env:ELECTRON_CACHE = $previousElectronCache
+    $stagingResolved = [System.IO.Path]::GetFullPath($stagingRoot)
+    $expectedPrefix = $buildRootResolved.TrimEnd("\\") + "\\desktop-package-"
+    if ($stagingResolved.StartsWith($expectedPrefix, [System.StringComparison]::OrdinalIgnoreCase) -and (Test-Path -LiteralPath $stagingResolved)) {
+      Remove-Item -LiteralPath $stagingResolved -Recurse -Force
+    }
   }
 }
 
