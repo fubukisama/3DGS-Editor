@@ -1,14 +1,14 @@
 {
     "appName":  "Gaussian Scene Workbench (Legacy HTML)",
-    "sourceVersion":  "36.10.8",
-    "packageVersion":  "0.2.8",
-    "releaseTag":  "v0.2.8",
-    "packageName":  "Gaussian-Scene-Workbench-0.2.8-win-x64.zip",
-    "updatedAt":  "2026-07-20T12:56:32+09:00",
+    "sourceVersion":  "36.10.9",
+    "packageVersion":  "0.2.9",
+    "releaseTag":  "v0.2.9",
+    "packageName":  "Gaussian-Scene-Workbench-0.2.9-win-x64.zip",
+    "updatedAt":  "2026-07-20T14:09:44+09:00",
     "updatedBy":  "Ishida_Lab",
     "machine":  "DESKTOP-UTA4K5M",
     "gitBranch":  "main",
-    "gitCommit":  "8faeeca",
+    "gitCommit":  "e204cbb",
     "gitDirty":  false,
-    "note":  "Fix false 2DGS preflight failures for imported Metashape camera datasets"
+    "note":  "Strictly isolate GS2Mesh and SuGaR runtimes and remove device-specific backend paths"
 }
