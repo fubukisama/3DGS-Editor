@@ -35,6 +35,10 @@ import {
 } from "./mesh-mode-capabilities.mjs?v=20260629_gs2mesh_texture";
 import { sugarOptionsFromPreset } from "./sugar-options.mjs?v=20260625_sugar_quality_ui";
 import {
+  twoDgsMeshOptionsFromValues,
+  twoDgsMeshUsesPost,
+} from "./two-dgs-mesh-options.mjs?v=20260723_2dgs_mesh_ui";
+import {
   collectPickingIds,
   deviceReadRect,
   encodePickingId,
@@ -128,6 +132,12 @@ const cancelTrainButton = document.getElementById("cancelTrain");
 const clearTrainInputButton = document.getElementById("clearTrainInput");
 const meshModeSelect = document.getElementById("meshMode");
 const meshResInput = document.getElementById("meshRes");
+const meshVoxelSizeInput = document.getElementById("meshVoxelSize");
+const meshSdfTruncInput = document.getElementById("meshSdfTrunc");
+const meshDepthTruncInput = document.getElementById("meshDepthTrunc");
+const meshDepthRatioInput = document.getElementById("meshDepthRatio");
+const meshNumClusterInput = document.getElementById("meshNumCluster");
+const meshSourceSelect = document.getElementById("meshSource");
 const meshTextureResInput = document.getElementById("meshTextureRes");
 const meshTextureQualitySelect = document.getElementById("meshTextureQuality");
 const meshTextureBackendSelect = document.getElementById("meshTextureBackend");
@@ -194,6 +204,13 @@ const I18N = {
     "label.output": "Output",
     "label.meshMode": "Mode",
     "label.res": "Res",
+    "label.meshRes": "Grid Res",
+    "label.voxelSize": "Voxel",
+    "label.sdfTrunc": "SDF Trunc",
+    "label.depthTrunc": "Depth Trunc",
+    "label.twoDgsDepthRatio": "Depth Ratio",
+    "label.numCluster": "Keep Parts",
+    "label.meshSource": "Load",
     "label.tex": "Tex",
     "label.texQuality": "Tex Quality",
     "label.bake": "Bake",
@@ -348,7 +365,14 @@ const I18N = {
     "option.noAlignedSource": "No aligned source",
     "option.uiScaleAuto": "Auto",
     "summary.meshAdvanced": "Mesh Parameters",
+    "summary.twoDgsMesh": "2DGS Extraction",
+    "summary.textureMesh": "Texture",
+    "summary.sugarMesh": "SuGaR",
+    "summary.gs2meshMesh": "GS2Mesh",
     "summary.trainAdvanced": "Training Parameters",
+    "option.cleanedMesh": "Cleaned",
+    "option.rawMesh": "Raw",
+    "placeholder.auto": "Auto",
     "panel.inputPreview": "Input Preview",
     "panel.trainingLog": "Training Log",
     "panel.importProgress": "Import Progress",
@@ -395,6 +419,13 @@ const I18N = {
     "label.output": "输出",
     "label.meshMode": "模式",
     "label.res": "分辨率",
+    "label.meshRes": "网格分辨率",
+    "label.voxelSize": "体素大小",
+    "label.sdfTrunc": "SDF截断",
+    "label.depthTrunc": "深度截断",
+    "label.twoDgsDepthRatio": "深度比例",
+    "label.numCluster": "保留组件",
+    "label.meshSource": "加载版本",
     "label.tex": "纹理",
     "label.texQuality": "纹理质量",
     "label.bake": "烘焙",
@@ -549,7 +580,14 @@ const I18N = {
     "option.noAlignedSource": "无对齐源",
     "option.uiScaleAuto": "自动",
     "summary.meshAdvanced": "网格参数",
+    "summary.twoDgsMesh": "2DGS 网格提取",
+    "summary.textureMesh": "纹理参数",
+    "summary.sugarMesh": "SuGaR 参数",
+    "summary.gs2meshMesh": "GS2Mesh 参数",
     "summary.trainAdvanced": "训练参数",
+    "option.cleanedMesh": "清理后",
+    "option.rawMesh": "原始网格",
+    "placeholder.auto": "自动",
     "panel.inputPreview": "输入预览",
     "panel.trainingLog": "训练日志",
     "panel.importProgress": "导入/抽帧进度",
@@ -596,6 +634,13 @@ const I18N = {
     "label.output": "出力",
     "label.meshMode": "モード",
     "label.res": "解像度",
+    "label.meshRes": "グリッド解像度",
+    "label.voxelSize": "ボクセル",
+    "label.sdfTrunc": "SDF切断",
+    "label.depthTrunc": "深度切断",
+    "label.twoDgsDepthRatio": "深度比率",
+    "label.numCluster": "保持領域",
+    "label.meshSource": "読込版",
     "label.tex": "テクスチャ",
     "label.texQuality": "品質",
     "label.bake": "ベイク",
@@ -750,7 +795,14 @@ const I18N = {
     "option.noAlignedSource": "整列済みデータなし",
     "option.uiScaleAuto": "自動",
     "summary.meshAdvanced": "メッシュ設定",
+    "summary.twoDgsMesh": "2DGS 抽出設定",
+    "summary.textureMesh": "テクスチャ設定",
+    "summary.sugarMesh": "SuGaR 設定",
+    "summary.gs2meshMesh": "GS2Mesh 設定",
     "summary.trainAdvanced": "学習設定",
+    "option.cleanedMesh": "クリーン版",
+    "option.rawMesh": "Raw版",
+    "placeholder.auto": "自動",
     "panel.inputPreview": "入力プレビュー",
     "panel.trainingLog": "学習ログ",
     "panel.importProgress": "インポート進捗",
@@ -1280,8 +1332,10 @@ function initUi() {
   downloadSpzButton.onclick = () => downloadSplatFormat("spz");
   downloadSogButton.onclick = () => downloadSplatFormat("sog");
   meshModeSelect.onchange = () => {
+    setTwoDgsControlsVisible(selectedMeshModeUsesTwoDgs());
     setSugarControlsVisible(selectedMeshModeUsesSugar());
     setGs2MeshControlsVisible(selectedMeshModeUsesGs2Mesh());
+    setMeshTextureControlsVisible(!selectedMeshModeUsesSugar());
     setMeshBusy(false);
     const status = meshModeUses3dgs(selectedMeshMode())
       ? `${selectedMeshModeUsesGs2Mesh() ? "GS2Mesh" : "SuGaR"} mesh mode targets loaded 3DGS scenes.`
@@ -1290,8 +1344,10 @@ function initUi() {
   };
   if (sugarQualitySelect) sugarQualitySelect.onchange = applySugarPreset;
   applySugarPreset();
+  setTwoDgsControlsVisible(selectedMeshModeUsesTwoDgs());
   setSugarControlsVisible(selectedMeshModeUsesSugar());
   setGs2MeshControlsVisible(selectedMeshModeUsesGs2Mesh());
+  setMeshTextureControlsVisible(!selectedMeshModeUsesSugar());
   document.getElementById("showPoints").onchange = updateLayerVisibility;
   document.getElementById("showSplats").onchange = updateLayerVisibility;
   document.getElementById("showRealSplats").onchange = onRealSplatsToggle;
@@ -1770,6 +1826,16 @@ function selectedMeshModeUsesGs2Mesh() {
   return meshModeUsesGs2Mesh(selectedMeshMode());
 }
 
+function selectedMeshModeUsesTwoDgs() {
+  return !meshModeUses3dgs(selectedMeshMode());
+}
+
+function setTwoDgsControlsVisible(visible) {
+  for (const control of document.querySelectorAll(".two-dgs-control")) {
+    control.hidden = !visible;
+  }
+}
+
 function setSugarControlsVisible(visible) {
   for (const control of document.querySelectorAll(".sugar-control")) {
     control.hidden = !visible;
@@ -1780,6 +1846,27 @@ function setGs2MeshControlsVisible(visible) {
   for (const control of document.querySelectorAll(".gs2mesh-control")) {
     control.hidden = !visible;
   }
+}
+
+function setMeshTextureControlsVisible(visible) {
+  for (const control of document.querySelectorAll(".mesh-texture-control")) {
+    control.hidden = !visible;
+  }
+}
+
+function twoDgsMeshOptions() {
+  return twoDgsMeshOptionsFromValues({
+    meshRes: meshResInput?.value,
+    numCluster: meshNumClusterInput?.value,
+    depthRatio: meshDepthRatioInput?.value,
+    voxelSize: meshVoxelSizeInput?.value,
+    sdfTrunc: meshSdfTruncInput?.value,
+    depthTrunc: meshDepthTruncInput?.value,
+  });
+}
+
+function selectedTwoDgsMeshUsesPost() {
+  return twoDgsMeshUsesPost(meshSourceSelect?.value || "cleaned");
 }
 
 function applySugarPreset() {
@@ -2885,7 +2972,9 @@ function setMeshBusy(busy) {
   bakeTextureButton.disabled = actions.bakeTextureDisabled;
   loadTextureButton.disabled = actions.loadTextureDisabled;
   meshModeSelect.disabled = busy;
-  meshResInput.disabled = busy;
+  for (const control of document.querySelectorAll(".two-dgs-control input, .two-dgs-control select")) {
+    control.disabled = busy;
+  }
   meshTextureResInput.disabled = busy;
   if (meshTextureQualitySelect) meshTextureQualitySelect.disabled = busy;
   if (meshTextureBackendSelect) meshTextureBackendSelect.disabled = busy;
@@ -3660,16 +3749,11 @@ function pollTrainingJob(jobId, outputScene) {
 
 async function startMeshExport() {
   if (!currentScene || !currentIteration) {
-    setStatus(selectedMeshModeUsesSugar() ? "Load a 3DGS scene first." : "Load a 2DGS scene first.");
+    setStatus(meshModeUses3dgs(selectedMeshMode()) ? "Load a 3DGS scene first." : "Load a 2DGS scene first.");
     return;
   }
   if (!selectedMeshModeMatchesBackend()) {
-    setStatus(selectedMeshModeUsesSugar() ? "SuGaR mesh export is only available for 3DGS scenes." : "Mesh export is only available for 2DGS scenes.");
-    return;
-  }
-  const meshRes = Number(meshResInput.value || 512);
-  if (!selectedMeshModeUsesSugar() && (!Number.isFinite(meshRes) || meshRes < 64 || meshRes > 4096)) {
-    setStatus("Mesh resolution must be between 64 and 4096.");
+    setStatus(meshModeUses3dgs(selectedMeshMode()) ? "This mesh mode is only available for 3DGS scenes." : "Mesh export is only available for 2DGS scenes.");
     return;
   }
   activeMeshJobId = null;
@@ -3679,16 +3763,13 @@ async function startMeshExport() {
   trainLog.textContent = "";
   try {
     const backendLabel = selectedMeshModeUsesSugar() ? "SuGaR" : (selectedMeshModeUsesGs2Mesh() ? "GS2Mesh" : "2DGS");
-    const options = {
-      mode: selectedMeshMode(),
-      mesh_res: meshRes,
-      num_cluster: 50,
-      depth_ratio: 0.0,
-    };
+    const options = { mode: selectedMeshMode() };
     if (selectedMeshModeUsesSugar()) {
       Object.assign(options, sugarMeshOptions());
     } else if (selectedMeshModeUsesGs2Mesh()) {
       Object.assign(options, gs2meshMeshOptions());
+    } else {
+      Object.assign(options, twoDgsMeshOptions());
     }
     setStatus(`Starting ${backendLabel} mesh export for ${currentScene}...`);
     appendTrainingLog(`Starting ${backendLabel} mesh export for output/${currentScene} iteration ${currentIteration}...`);
@@ -3712,6 +3793,15 @@ async function startMeshExport() {
         depth: [options.gs2mesh_tsdf_min_depth_baselines, options.gs2mesh_tsdf_max_depth_baselines],
         scene360: options.gs2mesh_scene_360,
         autoScale: options.gs2mesh_auto_scale,
+      })}`);
+    } else {
+      appendTrainingLog(`2DGS mesh options: ${JSON.stringify({
+        resolution: options.mesh_res,
+        voxel: options.voxel_size > 0 ? options.voxel_size : "auto",
+        sdfTrunc: options.sdf_trunc > 0 ? options.sdf_trunc : "auto",
+        depthTrunc: options.depth_trunc > 0 ? options.depth_trunc : "auto",
+        depthRatio: options.depth_ratio,
+        keepParts: options.num_cluster,
       })}`);
     }
     const res = await fetch(apiPath("/api/mesh/start"), {
@@ -4119,11 +4209,11 @@ async function loadCurrentTexture() {
 
 async function loadCurrentMesh({ forceOriginal = false } = {}) {
   if (!currentScene || !currentIteration) {
-    setStatus(selectedMeshModeUsesSugar() ? "Load a 3DGS scene first." : "Load a 2DGS scene first.");
+    setStatus(meshModeUses3dgs(selectedMeshMode()) ? "Load a 3DGS scene first." : "Load a 2DGS scene first.");
     return;
   }
   if (!selectedMeshModeMatchesBackend()) {
-    setStatus(selectedMeshModeUsesSugar() ? "SuGaR mesh view is only available for 3DGS scenes." : "Mesh view is only available for 2DGS scenes.");
+    setStatus(meshModeUses3dgs(selectedMeshMode()) ? "This mesh view is only available for 3DGS scenes." : "Mesh view is only available for 2DGS scenes.");
     return;
   }
   if (shouldKeepUnsavedMeshTrim(meshDirty, meshData)) {
@@ -4139,9 +4229,13 @@ async function loadCurrentMesh({ forceOriginal = false } = {}) {
     const assets = await res.json();
     if (!res.ok) throw new Error(assets.error || "Could not list meshes");
     const modeAssets = assets.meshes?.[meshModeSelect.value];
-    const mesh = modeAssets?.post?.exists ? modeAssets.post : modeAssets?.raw?.exists ? modeAssets.raw : null;
+    const usePost = selectedMeshModeUsesTwoDgs() ? selectedTwoDgsMeshUsesPost() : true;
+    const mesh = usePost
+      ? (modeAssets?.post?.exists ? modeAssets.post : null)
+      : (modeAssets?.raw?.exists ? modeAssets.raw : null);
     if (!mesh) {
-      setStatus(`No ${meshModeSelect.value} mesh found. Export Mesh first.`);
+      const sourceLabel = selectedMeshModeUsesTwoDgs() ? (usePost ? "cleaned" : "raw") : "output";
+      setStatus(`No ${sourceLabel} ${meshModeSelect.value} mesh found. Export Mesh first.`);
       return;
     }
     lastMeshDownloadUrl = mesh.url;

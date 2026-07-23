@@ -2347,6 +2347,33 @@ class TrainingBackendTests(unittest.TestCase):
             finally:
                 server.OUTPUT_DIR = original_output
 
+    def test_2dgs_mesh_options_validate_manual_quality_controls(self):
+        options = server.mesh_export_options(
+            {
+                "mode": "bounded",
+                "mesh_res": 1024,
+                "num_cluster": 12,
+                "depth_ratio": 0.25,
+                "voxel_size": 0.01,
+                "sdf_trunc": 0.05,
+                "depth_trunc": 40.0,
+            }
+        )
+        self.assertEqual(options["mesh_res"], 1024)
+        self.assertEqual(options["num_cluster"], 12)
+        self.assertEqual(options["depth_ratio"], 0.25)
+        self.assertEqual(options["voxel_size"], 0.01)
+        self.assertEqual(options["sdf_trunc"], 0.05)
+        self.assertEqual(options["depth_trunc"], 40.0)
+
+        for key in ("voxel_size", "sdf_trunc", "depth_trunc"):
+            with self.subTest(key=key), self.assertRaisesRegex(ValueError, key):
+                server.mesh_export_options({"mode": "bounded", key: 0})
+        with self.assertRaisesRegex(ValueError, "depth_ratio"):
+            server.mesh_export_options({"mode": "bounded", "depth_ratio": 1.1})
+        with self.assertRaisesRegex(ValueError, "finite"):
+            server.mesh_export_options({"mode": "bounded", "voxel_size": float("nan")})
+
     def test_mesh_export_rejects_non_2dgs_scene(self):
         with tempfile.TemporaryDirectory() as tmp:
             original_output = server.OUTPUT_DIR

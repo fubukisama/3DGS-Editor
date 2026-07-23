@@ -2517,6 +2517,17 @@ def mesh_export_options(options):
         raise ValueError("mesh_res must be between 64 and 4096")
     if num_cluster < 1 or num_cluster > 500:
         raise ValueError("num_cluster must be between 1 and 500")
+    if not math.isfinite(depth_ratio) or depth_ratio < 0.0 or depth_ratio > 1.0:
+        raise ValueError("depth_ratio must be finite and between 0 and 1")
+
+    manual_tsdf = {}
+    for name in ("voxel_size", "depth_trunc", "sdf_trunc"):
+        value = float(options.get(name, -1.0))
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be finite")
+        if value != -1.0 and value <= 0.0:
+            raise ValueError(f"{name} must be positive or -1 for automatic sizing")
+        manual_tsdf[name] = value
     sugar_quality = (options.get("sugar_quality") or "high").lower()
     if sugar_quality not in {"low", "high"}:
         sugar_quality = "high"
@@ -2565,9 +2576,9 @@ def mesh_export_options(options):
         "mesh_res": mesh_res,
         "num_cluster": num_cluster,
         "depth_ratio": depth_ratio,
-        "voxel_size": float(options.get("voxel_size", -1.0)),
-        "depth_trunc": float(options.get("depth_trunc", -1.0)),
-        "sdf_trunc": float(options.get("sdf_trunc", -1.0)),
+        "voxel_size": manual_tsdf["voxel_size"],
+        "depth_trunc": manual_tsdf["depth_trunc"],
+        "sdf_trunc": manual_tsdf["sdf_trunc"],
         "sugar_quality": sugar_quality,
         "sugar_regularization": sugar_regularization,
         "sugar_refinement_time": sugar_refinement_time,

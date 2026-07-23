@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Gaussian Scene Workbench (Legacy HTML)</title>
-  <link rel="stylesheet" href="styles.css?v=20260625_gs2mesh_collapsible">
+  <link rel="stylesheet" href="styles.css?v=20260723_2dgs_mesh_controls">
   <script type="importmap">
     {
       "imports": {
@@ -108,11 +108,25 @@
             <option value="gs2mesh" data-i18n="option.gs2mesh">GS2Mesh</option>
           </select>
         </label>
-        <details class="toolbar-details mesh-advanced">
-          <summary data-i18n="summary.meshAdvanced">Mesh Parameters</summary>
-        <label class="field compact"><span data-i18n="label.res">Res</span><input id="meshRes" type="number" min="64" max="4096" step="64" value="512"></label>
-        <label class="field compact"><span data-i18n="label.tex">Tex</span><input id="meshTextureRes" type="number" min="256" max="8192" step="256" value="8192"></label>
-        <label class="field"><span data-i18n="label.texQuality">Tex Quality</span>
+        <details class="toolbar-details two-dgs-control">
+          <summary data-i18n="summary.twoDgsMesh">2DGS Extraction</summary>
+          <label class="field compact"><span data-i18n="label.meshRes">Grid Res</span><input id="meshRes" type="number" min="64" max="4096" step="64" value="512"></label>
+          <label class="field compact"><span data-i18n="label.voxelSize">Voxel</span><input id="meshVoxelSize" type="number" min="0.000000001" step="any" placeholder="Auto" data-i18n-placeholder="placeholder.auto"></label>
+          <label class="field compact"><span data-i18n="label.sdfTrunc">SDF Trunc</span><input id="meshSdfTrunc" type="number" min="0.000000001" step="any" placeholder="Auto" data-i18n-placeholder="placeholder.auto"></label>
+          <label class="field compact"><span data-i18n="label.depthTrunc">Depth Trunc</span><input id="meshDepthTrunc" type="number" min="0.000000001" step="any" placeholder="Auto" data-i18n-placeholder="placeholder.auto"></label>
+          <label class="field compact"><span data-i18n="label.twoDgsDepthRatio">Depth Ratio</span><input id="meshDepthRatio" type="number" min="0" max="1" step="0.05" value="0"></label>
+          <label class="field compact"><span data-i18n="label.numCluster">Keep Parts</span><input id="meshNumCluster" type="number" min="1" max="500" step="1" value="50"></label>
+          <label class="field"><span data-i18n="label.meshSource">Load</span>
+            <select id="meshSource">
+              <option value="cleaned" selected data-i18n="option.cleanedMesh">Cleaned</option>
+              <option value="raw" data-i18n="option.rawMesh">Raw</option>
+            </select>
+          </label>
+        </details>
+        <details class="toolbar-details mesh-texture-control">
+          <summary data-i18n="summary.textureMesh">Texture</summary>
+          <label class="field compact"><span data-i18n="label.tex">Tex</span><input id="meshTextureRes" type="number" min="256" max="8192" step="256" value="8192"></label>
+          <label class="field"><span data-i18n="label.texQuality">Tex Quality</span>
           <select id="meshTextureQuality">
             <option value="fast" data-i18n="option.fast">Fast 30k</option>
             <option value="balanced" data-i18n="option.balanced">Balanced 100k</option>
@@ -120,14 +134,17 @@
             <option value="original" data-i18n="option.original">Original</option>
             <option value="ultra" data-i18n="option.ultra">Original 8192</option>
           </select>
-        </label>
-        <label class="field"><span data-i18n="label.bake">Bake</span>
+          </label>
+          <label class="field"><span data-i18n="label.bake">Bake</span>
           <select id="meshTextureBackend">
             <option value="colmap" selected>COLMAP</option>
             <option value="openmvs">OpenMVS</option>
           </select>
-        </label>
-        <label class="field sugar-control" hidden><span data-i18n="label.sugarQuality">SuGaR Quality</span>
+          </label>
+        </details>
+        <details class="toolbar-details sugar-control" hidden>
+          <summary data-i18n="summary.sugarMesh">SuGaR</summary>
+        <label class="field"><span data-i18n="label.sugarQuality">SuGaR Quality</span>
           <select id="sugarQuality">
             <option value="preview" selected data-i18n="option.sugarPreview">Preview</option>
             <option value="balanced" data-i18n="option.sugarBalanced">Balanced</option>
@@ -159,13 +176,16 @@
         <label class="field compact sugar-control" hidden><span data-i18n="label.sugarUv">UV</span><input id="sugarSquareSize" type="number" min="4" max="32" step="1" value="8"></label>
         <label class="field compact sugar-control" hidden><span data-i18n="label.sugarImages">Images</span><input id="sugarMaxImages" type="number" min="0" max="2000" step="1" value="96"></label>
         <label class="field compact sugar-control" hidden><span data-i18n="label.sugarImgSize">Img Max</span><input id="sugarMaxImageSize" type="number" min="256" max="4096" step="64" value="960"></label>
-        <label class="check sugar-control" hidden><input id="sugarPostprocess" type="checkbox"> <span data-i18n="toggle.sugarPost">Postprocess</span></label>
-        <label class="field compact gs2mesh-control" hidden><span data-i18n="label.gs2meshDownsample">Down</span><input id="gs2meshDownsample" type="number" min="1" max="8" step="1" value="2"></label>
-        <label class="field compact gs2mesh-control" hidden><span data-i18n="label.gs2meshBaseline">Base %</span><input id="gs2meshBaseline" type="number" min="0.1" max="50" step="0.5" value="7"></label>
-        <label class="field compact gs2mesh-control" hidden><span data-i18n="label.gs2meshVoxel">Voxel</span><input id="gs2meshTsdfVoxel" type="number" min="1" max="4096" step="1" value="2"></label>
-        <label class="field compact gs2mesh-control" hidden><span data-i18n="label.gs2meshDepth">Depth</span><input id="gs2meshTsdfMin" type="number" min="1" max="100" step="1" value="4"><input id="gs2meshTsdfMax" type="number" min="1" max="100000" step="1" value="20"></label>
-        <label class="check gs2mesh-control" hidden><input id="gs2meshScene360" type="checkbox" checked> <span data-i18n="toggle.gs2mesh360">360 Scene</span></label>
-        <label class="check gs2mesh-control" hidden><input id="gs2meshAutoScale" type="checkbox" checked> <span data-i18n="toggle.gs2meshAutoScale">Auto Scale</span></label>
+        <label class="check"><input id="sugarPostprocess" type="checkbox"> <span data-i18n="toggle.sugarPost">Postprocess</span></label>
+        </details>
+        <details class="toolbar-details gs2mesh-control" hidden>
+          <summary data-i18n="summary.gs2meshMesh">GS2Mesh</summary>
+          <label class="field compact"><span data-i18n="label.gs2meshDownsample">Down</span><input id="gs2meshDownsample" type="number" min="1" max="8" step="1" value="2"></label>
+          <label class="field compact"><span data-i18n="label.gs2meshBaseline">Base %</span><input id="gs2meshBaseline" type="number" min="0.1" max="50" step="0.5" value="7"></label>
+          <label class="field compact"><span data-i18n="label.gs2meshVoxel">Voxel</span><input id="gs2meshTsdfVoxel" type="number" min="1" max="4096" step="1" value="2"></label>
+          <label class="field compact"><span data-i18n="label.gs2meshDepth">Depth</span><input id="gs2meshTsdfMin" type="number" min="1" max="100" step="1" value="4"><input id="gs2meshTsdfMax" type="number" min="1" max="100000" step="1" value="20"></label>
+          <label class="check"><input id="gs2meshScene360" type="checkbox" checked> <span data-i18n="toggle.gs2mesh360">360 Scene</span></label>
+          <label class="check"><input id="gs2meshAutoScale" type="checkbox" checked> <span data-i18n="toggle.gs2meshAutoScale">Auto Scale</span></label>
         </details>
         <div class="action-strip">
           <button id="exportMesh" data-i18n="button.exportMesh">Export Mesh</button>
@@ -351,6 +371,6 @@
     <div id="fpsMeter" aria-live="off" title="SIBR-style 60-frame render-performance average.">FPS --  -- ms</div>
     <div id="status">Loading scenes...</div>
   </div>
-  <script type="module" src="app.js?v=20260716_metashape_cameras"></script>
+  <script type="module" src="app.js?v=20260723_2dgs_mesh_controls"></script>
 </body>
 </html>
