@@ -3913,6 +3913,13 @@ def ensure_mesh_environment():
         problems.append(f"Missing 2DGS venv Python: {python_path}")
     if not render_path.exists():
         problems.append(f"Missing 2DGS render.py: {render_path}")
+    if not report.get("runtime_ready", report.get("runtime_imports_ok", False)):
+        if report.get("native_extension_policy_blocked"):
+            problems.append(report.get("smart_app_control_guidance") or smart_app_control_guidance())
+        else:
+            problems.append(
+                f"2DGS CUDA runtime imports failed: {report.get('runtime_imports_error') or 'unknown error'}"
+            )
     if problems:
         raise RuntimeError("; ".join(problems))
     return report
@@ -5197,11 +5204,11 @@ def native_extension_policy_blocked(error_text, smart_app_state):
 
 def smart_app_control_guidance():
     return (
-        "Windows Smart App Control is ON and blocked the unsigned CUDA extension required by 3DGS. "
+        "Windows Smart App Control is ON and blocked an unsigned PyTorch/CUDA native DLL required by this backend. "
         "This Windows feature has no per-file allow rule. The workbench will use a compatible local "
         "SuGaR runtime only for 3DGS training compatibility when available; GS2Mesh never uses that "
-        "runtime. Otherwise open Windows Security > App & browser control > "
-        "Smart App Control settings, or install a build signed by a trusted certificate authority."
+        "runtime. For 2DGS, use a trusted signed Windows runtime or a WSL2/Linux runtime. Disabling Smart App "
+        "Control is system-wide and is not performed automatically by the workbench."
     )
 
 

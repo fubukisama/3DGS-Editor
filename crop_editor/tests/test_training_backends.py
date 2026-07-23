@@ -2032,6 +2032,23 @@ class TrainingBackendTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "Smart App Control"):
                 server.ensure_training_environment("3dgs")
 
+    def test_mesh_environment_rejects_smart_app_control_blocked_2dgs_runtime(self):
+        report = {
+            "two_dgs_dir_exists": True,
+            "two_dgs_dir": r"C:\2dgs",
+            "two_dgs_python": r"C:\2dgs\.venv\Scripts\python.exe",
+            "runtime_ready": False,
+            "runtime_imports_ok": False,
+            "runtime_imports_error": "OSError: [WinError 4551] application control policy blocked c10.dll",
+            "native_extension_policy_blocked": True,
+            "smart_app_control_guidance": "Windows Smart App Control is ON and blocked the 2DGS CUDA runtime.",
+        }
+
+        with mock.patch.object(server, "training_environment_report", return_value=report), \
+                mock.patch.object(Path, "exists", return_value=True):
+            with self.assertRaisesRegex(RuntimeError, "Smart App Control"):
+                server.ensure_mesh_environment()
+
     def test_training_environment_accepts_compatible_fallback_runtime(self):
         report = {
             "python_exists": True,
