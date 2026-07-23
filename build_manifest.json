@@ -1,14 +1,14 @@
 {
     "appName":  "Gaussian Scene Workbench (Legacy HTML)",
-    "sourceVersion":  "36.10.14",
-    "packageVersion":  "0.2.14",
-    "releaseTag":  "v0.2.14",
-    "packageName":  "Gaussian-Scene-Workbench-0.2.14-win-x64.zip",
-    "updatedAt":  "2026-07-23T10:34:23+09:00",
+    "sourceVersion":  "36.10.15",
+    "packageVersion":  "0.2.15",
+    "releaseTag":  "v0.2.15",
+    "packageName":  "Gaussian-Scene-Workbench-0.2.15-win-x64.zip",
+    "updatedAt":  "2026-07-23T10:51:22+09:00",
     "updatedBy":  "Ishida_Lab",
     "machine":  "DESKTOP-UTA4K5M",
     "gitBranch":  "main",
-    "gitCommit":  "6463005",
+    "gitCommit":  "db2e0e4",
     "gitDirty":  false,
-    "note":  "Recover failed 2DGS post-processing and derive bounded TSDF voxel size from Gaussian extent without changing source coordinates"
+    "note":  "Preflight the 2DGS PyTorch CUDA runtime before mesh export and classify Smart App Control blocks"
 }
