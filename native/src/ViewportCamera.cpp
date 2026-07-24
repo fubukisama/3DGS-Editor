@@ -24,7 +24,7 @@ OrbitAngles orbitAnglesAfterLeftDrag(const OrbitAngles current,
   constexpr float kPitchDegreesPerPixel = 0.28F;
 
   return {
-      wrapDegrees(current.yawDegrees -
+      wrapDegrees(current.yawDegrees +
                   static_cast<float>(delta.x()) * kYawDegreesPerPixel),
       wrapDegrees(current.pitchDegrees +
                   static_cast<float>(delta.y()) * kPitchDegreesPerPixel),

@@ -18,7 +18,7 @@ private slots:
 void ViewportCameraTests::mapsHorizontalAndVerticalLeftDragDirections() {
   const OrbitAngles horizontal =
       orbitAnglesAfterLeftDrag({42.0F, 24.0F}, QPoint(25, 0));
-  QCOMPARE(horizontal.yawDegrees, 34.0F);
+  QCOMPARE(horizontal.yawDegrees, 50.0F);
   QCOMPARE(horizontal.pitchDegrees, 24.0F);
 
   const OrbitAngles vertical =
